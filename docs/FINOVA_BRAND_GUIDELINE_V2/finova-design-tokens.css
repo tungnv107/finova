@@ -1,0 +1,37 @@
+/* Finova v2: UI colors coordinate with the approved raster logo. Do not recolor logo image. */
+:root {
+  --finova-primary: #1E5EFF;
+  --finova-primary-hover: #154CD4;
+  --finova-teal: #18C5C2;
+  --finova-teal-text: #087D79;
+  --finova-navy: #0B1F4A;
+  --finova-accent: #FFB020;
+  --finova-background: #F8FAFC;
+  --finova-surface: #FFFFFF;
+  --finova-surface-subtle: #F1F5F9;
+  --finova-border: #E2E8F0;
+  --finova-text: #0F172A;
+  --finova-text-secondary: #475569;
+  --finova-text-muted: #64748B;
+  --finova-income: #047857;
+  --finova-expense: #C2410C;
+  --finova-transfer: #1E5EFF;
+  --finova-warning: #B54708;
+  --finova-danger: #B42318;
+  --finova-radius-sm: 8px;
+  --finova-radius-md: 12px;
+  --finova-radius-lg: 16px;
+  --finova-radius-xl: 24px;
+  --finova-card-shadow: 0 6px 24px rgba(11,31,74,.06);
+  --finova-font: 'Plus Jakarta Sans', 'Be Vietnam Pro', Inter, system-ui, sans-serif;
+}
+[data-theme='dark'] {
+  --finova-background: #08162F;
+  --finova-surface: #102449;
+  --finova-surface-subtle: #172E56;
+  --finova-border: #304B72;
+  --finova-text: #F8FAFC;
+  --finova-text-secondary: #CBD5E1;
+  --finova-text-muted: #CBD5E1;
+}
+/* Brand teal on white has insufficient contrast for normal body text: use --finova-teal-text. */

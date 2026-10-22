@@ -1,0 +1,81 @@
+{
+  "brand": "Finova",
+  "version": "2.0",
+  "date": "2026-10-19",
+  "status": "selected approved concept in conversation; trademark unchecked",
+  "slogan": "Rõ tiền, vững tương lai",
+  "logoSource": "assets/finova-approved-logo-master.png",
+  "logoFormat": "raster reference PNG; not an approved SVG",
+  "colors": {
+    "brand": {
+      "primary": "#1E5EFF",
+      "primaryHover": "#154CD4",
+      "secondary": "#18C5C2",
+      "secondaryText": "#087D79",
+      "navy": "#0B1F4A",
+      "accent": "#FFB020"
+    },
+    "light": {
+      "background": "#F8FAFC",
+      "surface": "#FFFFFF",
+      "surfaceSubtle": "#F1F5F9",
+      "border": "#E2E8F0",
+      "text": "#0F172A",
+      "textSecondary": "#475569",
+      "textMuted": "#64748B"
+    },
+    "dark": {
+      "background": "#08162F",
+      "surface": "#102449",
+      "surfaceSubtle": "#172E56",
+      "border": "#304B72",
+      "text": "#F8FAFC",
+      "textSecondary": "#CBD5E1"
+    },
+    "financial": {
+      "income": "#047857",
+      "expense": "#C2410C",
+      "transfer": "#1E5EFF",
+      "savings": "#087D79",
+      "warning": "#B54708",
+      "danger": "#B42318",
+      "info": "#1E5EFF"
+    },
+    "charts": {
+      "categorical": [
+        "#1E5EFF",
+        "#18C5C2",
+        "#FFB020",
+        "#7C3AED",
+        "#0F8F7A",
+        "#64748B"
+      ]
+    }
+  },
+  "typography": {
+    "primary": "Plus Jakarta Sans",
+    "vietnameseFallback": "Be Vietnam Pro",
+    "systemFallback": "Inter, system-ui, sans-serif",
+    "baseSizePx": 16,
+    "numericStyle": "tabular-nums"
+  },
+  "radius": {
+    "small": 8,
+    "medium": 12,
+    "large": 16,
+    "extraLarge": 24
+  },
+  "spacingPx": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32,
+    48,
+    64
+  ],
+  "shadows": {
+    "card": "0 6px 24px rgba(11,31,74,.06)"
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "name": "finova",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration": "node --env-file-if-exists=.env --import tsx scripts/integration-check.ts",
+    "test:reporting:local": "node --env-file-if-exists=.env --import tsx scripts/reporting-readonly-smoke.ts",
+    "test:security-integration": "node --env-file-if-exists=.env --import tsx scripts/security-integration-check.ts",
+    "test:oauth": "node --env-file-if-exists=.env scripts/oauth-smoke.mjs",
+    "test:browser": "node scripts/browser-smoke.mjs",
+    "test:browser:local": "node scripts/run-browser-smoke-local.mjs",
+    "test:ui:auth": "node scripts/protected-ui-audit.mjs",
+    "test:watch": "vitest",
+    "security:audit": "node scripts/security-audit.mjs",
+    "security:routes": "node scripts/audit-api-routes.mjs",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "node --env-file-if-exists=.env --import tsx prisma/seed.ts",
+    "db:reconcile": "node --env-file-if-exists=.env --import tsx scripts/reconcile-ledger.ts",
+    "bench:reports": "node --env-file-if-exists=.env --import tsx scripts/benchmark-reports.ts",
+    "db:prune-rate-limits": "node --env-file-if-exists=.env --import tsx scripts/prune-rate-limits.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.3",
+    "better-auth": "1.7.11",
+    "decimal.js": "^10.6.0",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^0.468.0",
+    "next": "^16.4.2",
+    "pdfmake": "^0.3.12",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.10.1",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pdfmake": "^0.3.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "axe-core": "4.14.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^16.4.2",
+    "prisma": "6.19.3",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "5.0.5"
+  },
+  "overrides": {
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    },
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

@@ -1,0 +1,82 @@
+/* Finova UI/UX V3 — semantic tokens for the approved brand identity. */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --finova-primary: #1e5eff;
+  --finova-primary-hover: #154cd4;
+  --finova-teal: #18c5c2;
+  --finova-teal-text: #087d79;
+  --finova-navy: #0b1f4a;
+  --finova-accent: #ffb020;
+  --finova-background: #f1f5fb;
+  --finova-surface: #ffffff;
+  --finova-surface-subtle: #eaf1fb;
+  --finova-surface-raised: #ffffff;
+  --finova-border: #dce5f2;
+  --finova-text: #101b35;
+  --finova-text-secondary: #475569;
+  --finova-text-muted: #64748b;
+  --finova-income: #047857;
+  --finova-expense: #c2410c;
+  --finova-transfer: #1e5eff;
+  --finova-warning: #b54708;
+  --finova-danger: #b42318;
+  --finova-chart-grid: #dce5f2;
+  --finova-hero-gradient: linear-gradient(125deg, #0b1f4a 0%, #123e91 52%, #1e5eff 100%);
+  --finova-hero-text: #ffffff;
+  --finova-text-on-brand: #ffffff;
+  --finova-border-soft: #dce5f2;
+  --finova-border-control: #cbd7e8;
+  --finova-text-main: #101b35;
+  --finova-text-subtle: #52627d;
+  --finova-brand: #1e5eff;
+  --finova-brand-strong: #154cd4;
+  --finova-radius-sm: 8px;
+  --finova-radius-md: 12px;
+  --finova-radius-lg: 18px;
+  --finova-radius-xl: 24px;
+  --finova-radius-card: 20px;
+  --finova-radius-hero: 24px;
+  --finova-radius-control: 12px;
+  --finova-card-shadow: 0 8px 28px rgb(11 31 74 / 7%);
+  --finova-shadow-card: 0 8px 28px rgb(11 31 74 / 7%);
+  --finova-shadow-hero: 0 18px 35px rgb(12 49 120 / 18%);
+  --finova-bottom-nav-height: 72px;
+  --finova-font: "Plus Jakarta Sans", "Be Vietnam Pro", Inter, system-ui, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --finova-primary: #7fa5ff;
+  --finova-primary-hover: #a8c1ff;
+  --finova-teal: #2dd4bf;
+  --finova-teal-text: #5eead4;
+  --finova-navy: #0b1f4a;
+  --finova-accent: #ffbf47;
+  --finova-background: #071326;
+  --finova-surface: #102341;
+  --finova-surface-subtle: #183252;
+  --finova-surface-raised: #1d3859;
+  --finova-border: #345273;
+  --finova-text: #f8fafc;
+  --finova-text-secondary: #cbd5e1;
+  --finova-text-muted: #b6c4d8;
+  --finova-income: #4ade80;
+  --finova-expense: #fdba74;
+  --finova-transfer: #9bb8ff;
+  --finova-warning: #fbbf24;
+  --finova-danger: #fda4af;
+  --finova-chart-grid: #294565;
+  --finova-hero-gradient: linear-gradient(135deg, #102b61 0%, #0b1f4a 58%, #1746a2 100%);
+  --finova-hero-text: #ffffff;
+  --finova-text-on-brand: #ffffff;
+  --finova-border-soft: #345273;
+  --finova-border-control: #466487;
+  --finova-text-main: #f8fafc;
+  --finova-text-subtle: #cbd5e1;
+  --finova-brand: #9bb8ff;
+  --finova-brand-strong: #1e5eff;
+  --finova-card-shadow: 0 10px 26px rgb(0 0 0 / 12%);
+  --finova-shadow-card: 0 10px 26px rgb(0 0 0 / 12%);
+  --finova-shadow-hero: 0 18px 36px rgb(0 0 0 / 22%);
+}

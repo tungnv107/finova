@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: finova
+      POSTGRES_USER: finova
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_change_me}
+    ports:
+      - "127.0.0.1:${FINOVA_DB_PORT:-55433}:5432"
+    volumes:
+      - finova_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finova -d finova"]
+      interval: 5s
+      retries: 15
+
+  # Opt-in local application profile; the default `docker compose up -d db` stays DB-only.
+  app:
+    profiles: ["app"]
+    build:
+      context: .
+      target: production
+    image: ${FINOVA_APP_IMAGE:-finova:local}
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Explicit URL prevents silently using the sample password against an existing DB.
+      DATABASE_URL: ${FINOVA_CONTAINER_DATABASE_URL:-}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3002}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3002}
+      FINOVA_CSP_ENFORCE: ${FINOVA_CSP_ENFORCE:-0}
+      FINOVA_TRUSTED_CLIENT_IP_HEADER: ${FINOVA_TRUSTED_CLIENT_IP_HEADER:-}
+      FINOVA_CRON_SECRET: ${FINOVA_CRON_SECRET:-}
+      FINOVA_BANK_EVENT_KEY: ${FINOVA_BANK_EVENT_KEY:-}
+      FINOVA_SEPAY_BANKHUB_ENABLED: ${FINOVA_SEPAY_BANKHUB_ENABLED:-0}
+      FINOVA_SEPAY_BANKHUB_ENV: ${FINOVA_SEPAY_BANKHUB_ENV:-sandbox}
+      FINOVA_SEPAY_BANKHUB_CLIENT_ID: ${FINOVA_SEPAY_BANKHUB_CLIENT_ID:-}
+      FINOVA_SEPAY_BANKHUB_CLIENT_SECRET: ${FINOVA_SEPAY_BANKHUB_CLIENT_SECRET:-}
+      FINOVA_SEPAY_BANKHUB_IPN_API_KEY: ${FINOVA_SEPAY_BANKHUB_IPN_API_KEY:-}
+    ports:
+      - "127.0.0.1:${FINOVA_APP_PORT:-3002}:3002"
+    # Fail before serving requests if the Docker-network database URL was not supplied.
+    command: ["sh", "-ec", "if [ -z \"$$DATABASE_URL\" ]; then echo 'FINOVA_CONTAINER_DATABASE_URL is required for app profile' >&2; exit 1; fi; exec npm run start -- -p 3002"]
+
+  # Separate one-shot migration job using the build stage (runtime image omits Prisma CLI).
+  # Explicit FINOVA_MIGRATION_DATABASE_URL is required when invoking this profile.
+  migrate:
+    profiles: ["release"]
+    build:
+      context: .
+      target: build
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${FINOVA_MIGRATION_DATABASE_URL:-}
+    command: ["npx", "prisma", "migrate", "deploy"]
+    restart: "no"
+
+volumes:
+  finova_pg:

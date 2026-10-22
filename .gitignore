@@ -1,0 +1,17 @@
+node_modules/
+.next/
+.env
+.env.*.local
+!.env.example
+coverage/
+*.log
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+generated/
+artifacts/backups/
+
+# Local Next.js build and test output
+.next-*/
+# Generated QA artifacts and scratch inputs
+/artifacts/
+/buff/

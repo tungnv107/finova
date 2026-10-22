@@ -1,0 +1,913 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma-client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  memberships   Membership[]
+  preferences   UserPreferences?
+  workspaces    Workspace[] @relation("WorkspaceCreator")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Account {
+  id                    String   @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?  @db.Text
+  refreshToken          String?  @db.Text
+  idToken               String?  @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@unique([providerId, accountId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String   @db.Text
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@index([identifier])
+}
+
+model UserPreferences {
+  userId         String @id
+  currency       String @default("VND")
+  timezone       String @default("Asia/Ho_Chi_Minh")
+  locale         String @default("vi-VN")
+  theme          String @default("light")
+  budgetStartDay Int    @default(1)
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Workspace {
+  id           String   @id @default(cuid())
+  name         String
+  type         String   @default("PERSONAL")
+  currency     String   @default("VND")
+  createdById  String
+  createdAt    DateTime @default(now())
+  creator      User     @relation("WorkspaceCreator", fields: [createdById], references: [id])
+  memberships  Membership[]
+  wallets      Wallet[]
+  walletReconciliations WalletReconciliation[]
+  categories   Category[]
+  ledger       LedgerAccount[]
+  transactions Transaction[]
+  journals     Journal[]
+  auditLogs    AuditLog[]
+  budgets      Budget[]
+  goals        SavingsGoal[]
+  goalEvents   GoalAllocation[]
+  debtContracts DebtContract[]
+  debtPayments DebtPayment[]
+  creditCards CreditCard[]
+  cardEntries CardEntry[]
+  recurringRules RecurringRule[]
+  recurringOccurrences RecurringOccurrence[]
+  notifications Notification[]
+  importBatches ImportBatch[]
+  importRows ImportRow[]
+  bankConnections BankConnection[]
+  bankAccounts BankAccount[]
+  bankTransactions BankTransaction[]
+  bankEvents BankRawEvent[]
+  bankReviews BankReviewItem[]
+  bankAuditEvents BankAuditEvent[]
+  bankReconciliationSnapshots BankReconciliationSnapshot[]
+  bankCategoryRules BankCategoryRule[]
+}
+
+model Membership {
+  userId      String
+  workspaceId String
+  role        String   @default("OWNER")
+  status      String   @default("ACTIVE")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@id([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+enum AccountKind {
+  ASSET
+  LIABILITY
+  INCOME
+  EXPENSE
+  EQUITY
+  RECEIVABLE
+}
+
+enum EntrySide {
+  DEBIT
+  CREDIT
+}
+
+enum TransactionKind {
+  INCOME
+  EXPENSE
+  TRANSFER
+  REFUND
+  ADJUSTMENT
+}
+
+enum TransactionStatus {
+  ACTIVE
+  VOID
+}
+
+enum WalletType {
+  CASH
+  BANK
+  EWALLET
+  SAVINGS
+}
+
+model LedgerAccount {
+  id          String      @id @default(cuid())
+  workspaceId String
+  code        String
+  name        String
+  kind        AccountKind
+  currency    String      @default("VND")
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  wallet      Wallet?     @relation("WalletAccount")
+  category    Category?   @relation("CategoryAccount")
+  postings    Posting[]
+  debtContracts DebtContract[]
+  creditCards CreditCard[]
+  @@unique([workspaceId, code])
+  @@unique([workspaceId, id])
+  @@index([workspaceId, kind])
+}
+
+model Wallet {
+  id                 String       @id @default(cuid())
+  workspaceId        String
+  ledgerAccountId    String       @unique
+  name               String
+  type               WalletType
+  currency           String       @default("VND")
+  includeInAvailable Boolean      @default(true)
+  color              String       @default("#1E5EFF")
+  note               String?
+  archivedAt         DateTime?
+  createdAt          DateTime     @default(now())
+  workspace          Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ledgerAccount      LedgerAccount @relation("WalletAccount", fields: [ledgerAccountId], references: [id])
+  sourceTransactions Transaction[] @relation("TransactionSourceWallet")
+  reconciliations WalletReconciliation[]
+  destinationTransactions Transaction[] @relation("TransactionDestinationWallet")
+  savingsGoals       SavingsGoal[]
+  debtContracts      DebtContract[]
+  debtPayments       DebtPayment[]
+  cardPayments       CardEntry[]
+  bankAccounts BankAccount[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, archivedAt])
+}
+
+model Category {
+  id              String      @id @default(cuid())
+  workspaceId     String
+  parentId        String?
+  name            String
+  kind            AccountKind
+  icon            String      @default("Circle")
+  color           String      @default("#1E5EFF")
+  ledgerAccountId String      @unique
+  archivedAt      DateTime?
+  workspace       Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent          Category?   @relation("CategoryTree", fields: [workspaceId, parentId], references: [workspaceId, id], onDelete: NoAction)
+  children        Category[]  @relation("CategoryTree")
+  ledgerAccount   LedgerAccount @relation("CategoryAccount", fields: [ledgerAccountId], references: [id])
+  transactions    Transaction[]
+  budgetCategories BudgetCategory[]
+  cardEntries CardEntry[]
+  bankCategoryRules BankCategoryRule[]
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, kind, name])
+  @@index([workspaceId, kind])
+  @@index([workspaceId, parentId])
+}
+
+model Transaction {
+  id                    String            @id @default(cuid())
+  workspaceId           String
+  kind                  TransactionKind
+  status                TransactionStatus @default(ACTIVE)
+  amount                Decimal           @db.Decimal(20, 4)
+  feeAmount             Decimal           @default(0) @db.Decimal(20, 4)
+  currency              String            @default("VND")
+  walletId              String
+  destinationWalletId   String?
+  categoryId            String?
+  originalTransactionId String?
+  note                  String?           @db.Text
+  tags                  String[]          @default([])
+  occurredAt            DateTime
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  createdById           String
+  version               Int               @default(1)
+  idempotencyKey        String?
+  workspace             Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  wallet                Wallet            @relation("TransactionSourceWallet", fields: [workspaceId, walletId], references: [workspaceId, id], onDelete: Restrict)
+  destinationWallet     Wallet?           @relation("TransactionDestinationWallet", fields: [workspaceId, destinationWalletId], references: [workspaceId, id], onDelete: Restrict)
+  category              Category?         @relation(fields: [workspaceId, categoryId], references: [workspaceId, id], onDelete: Restrict)
+  originalTransaction   Transaction?      @relation("TransactionRefunds", fields: [workspaceId, originalTransactionId], references: [workspaceId, id], onDelete: Restrict)
+  refunds               Transaction[]     @relation("TransactionRefunds")
+  journals              Journal[]
+  recurringOccurrences RecurringOccurrence[]
+  bankLinks BankTransactionLink[]
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, occurredAt(sort: Desc), id])
+  @@index([workspaceId, walletId, occurredAt])
+  @@index([workspaceId, categoryId, occurredAt])
+}
+
+model Journal {
+  id                String      @id @default(cuid())
+  workspaceId       String
+  transactionId     String?
+  walletId          String?
+  destinationWalletId String?
+  kind              String
+  effectiveAt       DateTime
+  postedAt          DateTime    @default(now())
+  reversedJournalId String?     @unique
+  workspace         Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  transaction       Transaction? @relation(fields: [transactionId], references: [id])
+  reversedJournal   Journal?    @relation("Reversal", fields: [reversedJournalId], references: [id])
+  reversal          Journal?    @relation("Reversal")
+  postings          Posting[]
+  reconciliation    WalletReconciliation?
+  originatedDebts   DebtContract[] @relation("DebtOrigination")
+  debtPayments      DebtPayment[]
+  cardEntries       CardEntry[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, effectiveAt])
+  @@index([transactionId])
+  @@index([workspaceId, walletId, effectiveAt])
+}
+
+model WalletReconciliation {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  walletId        String
+  createdById     String
+  expectedBalance Decimal   @db.Decimal(20, 4)
+  actualBalance   Decimal   @db.Decimal(20, 4)
+  delta           Decimal   @db.Decimal(20, 4)
+  reason          String    @db.Text
+  idempotencyKey  String
+  journalId       String?   @unique
+  createdAt       DateTime  @default(now())
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  wallet          Wallet    @relation(fields: [workspaceId, walletId], references: [workspaceId, id], onDelete: Restrict)
+  journal         Journal?  @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, walletId, createdAt(sort: Desc)])
+}
+
+model Posting {
+  id              String        @id @default(cuid())
+  journalId       String
+  ledgerAccountId String
+  side            EntrySide
+  amount          Decimal       @db.Decimal(20, 4)
+  currency        String        @default("VND")
+  journal         Journal       @relation(fields: [journalId], references: [id], onDelete: Restrict)
+  account         LedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  @@index([ledgerAccountId, journalId])
+  @@index([journalId])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  workspaceId String
+  actorId     String
+  action      String
+  entityType  String
+  entityId    String
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+}
+
+enum BudgetPeriod {
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum BudgetScope {
+  TOTAL
+  CATEGORY
+  GROUP
+}
+
+enum BudgetThreshold {
+  P50
+  P80
+  P100
+  OVER100
+}
+
+model Budget {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  name         String
+  scope        BudgetScope
+  period       BudgetPeriod
+  limitAmount  Decimal      @db.Decimal(20, 4)
+  currency     String       @default("VND")
+  startAt      DateTime
+  endAt        DateTime
+  archivedAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  categories   BudgetCategory[]
+  alerts       BudgetAlert[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, archivedAt, startAt, endAt])
+}
+
+model BudgetCategory {
+  workspaceId String
+  budgetId    String
+  categoryId  String
+  budget      Budget   @relation(fields: [workspaceId, budgetId], references: [workspaceId, id], onDelete: Cascade)
+  category    Category @relation(fields: [workspaceId, categoryId], references: [workspaceId, id], onDelete: Restrict)
+  @@id([budgetId, categoryId])
+  @@index([workspaceId, categoryId])
+}
+
+model BudgetAlert {
+  id          String          @id @default(cuid())
+  budgetId    String
+  periodKey   String
+  threshold   BudgetThreshold
+  reachedAt   DateTime        @default(now())
+  resolvedAt  DateTime?
+  budget      Budget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  @@unique([budgetId, periodKey, threshold])
+}
+
+enum GoalAllocationKind {
+  ALLOCATE
+  RELEASE
+}
+
+// Earmarking money in an existing asset wallet; never creates an asset or an income/expense journal.
+model SavingsGoal {
+  id          String           @id @default(cuid())
+  workspaceId String
+  walletId    String
+  name        String
+  target      Decimal          @db.Decimal(20, 4)
+  dueAt       DateTime?
+  archivedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  wallet      Wallet           @relation(fields: [workspaceId, walletId], references: [workspaceId, id], onDelete: Restrict)
+  events      GoalAllocation[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, archivedAt])
+  @@index([workspaceId, walletId])
+}
+
+model GoalAllocation {
+  id             String             @id @default(cuid())
+  workspaceId    String
+  goalId         String
+  kind           GoalAllocationKind
+  amount         Decimal            @db.Decimal(20, 4)
+  note           String?            @db.VarChar(300)
+  idempotencyKey String?
+  createdAt      DateTime           @default(now())
+  createdById    String
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  goal           SavingsGoal        @relation(fields: [workspaceId, goalId], references: [workspaceId, id], onDelete: Restrict)
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, goalId, createdAt])
+}
+
+enum DebtDirection {
+  BORROW
+  LEND
+}
+
+// Each agreement has its own LIABILITY (borrow) or RECEIVABLE (lend) ledger account.
+model DebtContract {
+  id                   String @id @default(cuid())
+  workspaceId          String
+  walletId             String
+  ledgerAccountId      String @unique
+  originationJournalId String @unique
+  direction            DebtDirection
+  counterparty         String
+  principal            Decimal @db.Decimal(20, 4)
+  annualRate           Decimal @default(0) @db.Decimal(7, 4)
+  installmentCount     Int @default(1)
+  startAt              DateTime
+  dueAt                DateTime?
+  note                 String? @db.VarChar(500)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  workspace            Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  wallet               Wallet @relation(fields: [workspaceId, walletId], references: [workspaceId, id], onDelete: Restrict)
+  ledgerAccount        LedgerAccount @relation(fields: [workspaceId, ledgerAccountId], references: [workspaceId, id], onDelete: Restrict)
+  originationJournal   Journal @relation("DebtOrigination", fields: [workspaceId, originationJournalId], references: [workspaceId, id], onDelete: Restrict)
+  payments             DebtPayment[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, direction, dueAt])
+}
+
+model DebtPayment {
+  id             String @id @default(cuid())
+  workspaceId    String
+  debtId         String
+  walletId       String
+  journalId      String @unique
+  principal      Decimal @db.Decimal(20, 4)
+  interest       Decimal @db.Decimal(20, 4)
+  effectiveAt    DateTime
+  idempotencyKey String?
+  createdAt      DateTime @default(now())
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  debt           DebtContract @relation(fields: [workspaceId, debtId], references: [workspaceId, id], onDelete: Restrict)
+  wallet         Wallet @relation(fields: [workspaceId, walletId], references: [workspaceId, id], onDelete: Restrict)
+  journal        Journal @relation(fields: [workspaceId, journalId], references: [workspaceId, id], onDelete: Restrict)
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, debtId, effectiveAt])
+}
+
+model CreditCard {
+  id              String @id @default(cuid())
+  workspaceId     String
+  ledgerAccountId String @unique
+  name            String
+  lastFour        String?
+  creditLimit     Decimal @db.Decimal(20, 4)
+  openingDebt     Decimal @default(0) @db.Decimal(20, 4)
+  statementDay    Int
+  paymentDueDay   Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ledgerAccount   LedgerAccount @relation(fields: [workspaceId, ledgerAccountId], references: [workspaceId, id], onDelete: Restrict)
+  entries         CardEntry[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, name])
+}
+
+enum CardEntryKind {
+  PURCHASE
+  REFUND
+  PAYMENT
+}
+
+model CardEntry {
+  id              String @id @default(cuid())
+  workspaceId     String
+  cardId          String
+  kind            CardEntryKind
+  amount          Decimal @db.Decimal(20, 4)
+  walletId        String?
+  categoryId      String?
+  originalEntryId String?
+  journalId       String @unique
+  effectiveAt     DateTime
+  note            String? @db.VarChar(300)
+  idempotencyKey  String?
+  createdAt       DateTime @default(now())
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  card            CreditCard @relation(fields: [workspaceId, cardId], references: [workspaceId, id], onDelete: Restrict)
+  wallet          Wallet? @relation(fields: [workspaceId, walletId], references: [workspaceId, id], onDelete: Restrict)
+  category        Category? @relation(fields: [workspaceId, categoryId], references: [workspaceId, id], onDelete: Restrict)
+  originalEntry   CardEntry? @relation("CardRefunds", fields: [workspaceId, originalEntryId], references: [workspaceId, id], onDelete: Restrict)
+  refunds         CardEntry[] @relation("CardRefunds")
+  journal         Journal @relation(fields: [workspaceId, journalId], references: [workspaceId, id], onDelete: Restrict)
+  @@unique([workspaceId, id])
+  @@unique([workspaceId, idempotencyKey])
+  @@index([workspaceId, cardId, effectiveAt])
+}
+
+enum RecurringFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum RecurringMode {
+  CONFIRM
+  AUTO
+}
+
+enum RecurringStatus {
+  PENDING
+  PROCESSING
+  POSTED
+  SKIPPED
+}
+
+model RecurringRule {
+  id                  String @id @default(cuid())
+  workspaceId         String
+  name                String @db.VarChar(100)
+  frequency           RecurringFrequency
+  interval            Int @default(1)
+  mode                RecurringMode @default(CONFIRM)
+  kind                TransactionKind
+  walletId            String
+  destinationWalletId String?
+  categoryId          String?
+  amount              Decimal @db.Decimal(20,4)
+  note                String? @db.VarChar(1000)
+  startDate           String @db.VarChar(10)
+  endDate             String? @db.VarChar(10)
+  paused              Boolean @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  workspace           Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  occurrences         RecurringOccurrence[]
+  @@unique([workspaceId,id])
+  @@index([workspaceId,paused])
+}
+
+model RecurringOccurrence {
+  id              String @id @default(cuid())
+  workspaceId     String
+  ruleId          String
+  periodKey       String @db.VarChar(10)
+  dueAt           DateTime
+  status          RecurringStatus @default(PENDING)
+  transactionId   String? @unique
+  processingAt    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rule            RecurringRule @relation(fields: [workspaceId,ruleId], references: [workspaceId,id], onDelete: Restrict)
+  transaction     Transaction? @relation(fields: [workspaceId,transactionId], references: [workspaceId,id], onDelete: Restrict)
+  @@unique([ruleId,periodKey])
+  @@unique([workspaceId,id])
+  @@index([workspaceId,status,dueAt])
+}
+
+model Notification {
+  id          String @id @default(cuid())
+  workspaceId String
+  key         String @db.VarChar(200)
+  title       String @db.VarChar(160)
+  body        String @db.VarChar(500)
+  link        String? @db.VarChar(200)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId,key])
+  @@index([workspaceId,readAt,createdAt])
+}
+
+enum ImportStatus {
+  PREVIEW
+  COMPLETE
+}
+
+enum ImportRowStatus {
+  VALID
+  INVALID
+  DUPLICATE
+  IMPORTED
+  FAILED
+}
+
+model ImportBatch {
+  id          String @id @default(cuid())
+  workspaceId String
+  createdById String
+  fileName    String @db.VarChar(200)
+  fileHash    String @db.VarChar(64)
+  status      ImportStatus @default(PREVIEW)
+  createdAt   DateTime @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rows        ImportRow[]
+  @@unique([workspaceId,id])
+  @@index([workspaceId,createdAt])
+}
+
+model ImportRow {
+  id              String @id @default(cuid())
+  workspaceId     String
+  batchId         String
+  rowNumber       Int
+  sourceHash      String @db.VarChar(64)
+  kind            TransactionKind?
+  walletId        String?
+  categoryId      String?
+  destinationWalletId String?
+  amount          Decimal? @db.Decimal(20,4)
+  occurredAt      DateTime?
+  note            String? @db.VarChar(1000)
+  status          ImportRowStatus
+  error           String? @db.VarChar(500)
+  transactionId   String?
+  workspace       Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  batch           ImportBatch @relation(fields: [workspaceId,batchId], references: [workspaceId,id], onDelete: Cascade)
+  @@unique([batchId,rowNumber])
+  @@index([workspaceId,sourceHash,status])
+  @@index([batchId,status])
+}
+
+// Shared, atomic API quotas across all Next.js instances. Pruned by the scheduler.
+model ApiRateLimit {
+  key         String   @db.VarChar(64)
+  windowStart DateTime @db.Timestamptz(0)
+  count       Int
+  expiresAt   DateTime @db.Timestamptz(0)
+  @@id([key, windowStart])
+  @@index([expiresAt])
+}
+
+// Bank feed is a separate immutable source. Only a reviewed ledger transaction
+// changes balances; provider events must never write wallet amounts directly.
+model BankProvider {
+  code String @id @db.VarChar(60)
+  displayName String
+  status String @default("UNVERIFIED")
+  capabilitiesJson Json
+  configVersion Int @default(1)
+  connections BankConnection[]
+  events BankRawEvent[]
+  @@map("bank_providers")
+}
+
+model BankConnection {
+  id String @id @default(cuid())
+  workspaceId String
+  providerCode String
+  providerConnectionRef String? @db.VarChar(200)
+  status String @default("PAUSED")
+  postingPolicy String @default("HYBRID")
+  consentExpiresAt DateTime?
+  lastSyncedAt DateTime?
+  cutoverAt DateTime?
+  errorCode String?
+  credentialRef String?
+  pollCursor String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  provider BankProvider @relation(fields: [providerCode], references: [code], onDelete: Restrict)
+  consents BankConsent[]
+  accounts BankAccount[]
+  events BankRawEvent[]
+  jobs BankSyncJob[]
+  @@unique([workspaceId, id])
+  @@index([workspaceId, status])
+  @@map("bank_connections")
+}
+
+model BankConsent {
+  id String @id @default(cuid())
+  workspaceId String
+  connectionId String
+  scopeJson Json
+  purposeVersion String
+  evidenceRef String
+  grantedAt DateTime
+  expiresAt DateTime?
+  revokedAt DateTime?
+  connection BankConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Restrict)
+  @@index([connectionId, revokedAt])
+  @@map("bank_consents")
+}
+
+model BankAccount {
+  id String @id @default(cuid())
+  workspaceId String
+  connectionId String
+  providerAccountRef String @db.VarChar(200)
+  bankCode String?
+  accountMasked String @db.VarChar(40)
+  accountIdentifierHash String? @db.VarChar(64)
+  currency String @default("VND")
+  walletId String?
+  status String @default("ACTIVE")
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  connection BankConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Restrict)
+  wallet Wallet? @relation(fields: [workspaceId, walletId], references: [workspaceId, id], onDelete: Restrict)
+  transactions BankTransaction[]
+  reconciliationSnapshots BankReconciliationSnapshot[]
+  @@unique([workspaceId, id])
+  @@unique([connectionId, providerAccountRef])
+  @@index([workspaceId, walletId])
+  @@map("bank_accounts")
+}
+
+model BankRawEvent {
+  id String @id @default(cuid())
+  workspaceId String
+  providerCode String
+  connectionId String
+  externalEventId String @db.VarChar(200)
+  payloadCiphertext String @db.Text
+  payloadHash String @db.VarChar(64)
+  signatureValid Boolean
+  receivedAt DateTime @default(now())
+  processingStatus String @default("PENDING")
+  attemptCount Int @default(0)
+  deliveryCount Int @default(1)
+  lastError String?
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  provider BankProvider @relation(fields: [providerCode], references: [code], onDelete: Restrict)
+  connection BankConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Restrict)
+  transactions BankTransaction[]
+  @@unique([providerCode, connectionId, externalEventId])
+  @@index([processingStatus, receivedAt])
+  @@map("bank_raw_events")
+}
+
+model BankTransaction {
+  id String @id @default(cuid())
+  workspaceId String
+  bankAccountId String
+  rawEventId String?
+  externalTransactionId String? @db.VarChar(200)
+  bankReference String? @db.VarChar(200)
+  direction String @db.VarChar(3)
+  amount Decimal @db.Decimal(20, 4)
+  currency String @default("VND")
+  occurredAt DateTime
+  bookedAt DateTime?
+  descriptionRaw String @db.Text
+  runningBalance Decimal? @db.Decimal(20, 4)
+  bookingStatus String
+  processingStatus String @default("STAGED")
+  fingerprint String @db.VarChar(64)
+  sourceVersion String @default("1")
+  receivedAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account BankAccount @relation(fields: [workspaceId, bankAccountId], references: [workspaceId, id], onDelete: Restrict)
+  rawEvent BankRawEvent? @relation(fields: [rawEventId], references: [id], onDelete: Restrict)
+  links BankTransactionLink[]
+  reviews BankReviewItem[]
+  @@unique([workspaceId, id])
+  @@unique([bankAccountId, externalTransactionId])
+  @@index([workspaceId, occurredAt(sort: Desc)])
+  @@index([bankAccountId, bookedAt(sort: Desc)])
+  @@map("bank_transactions")
+}
+
+model BankTransactionLink {
+  id String @id @default(cuid())
+  workspaceId String
+  bankTransactionId String
+  transactionId String
+  linkType String
+  createdBy String
+  createdAt DateTime @default(now())
+  bankTransaction BankTransaction @relation(fields: [workspaceId, bankTransactionId], references: [workspaceId, id], onDelete: Restrict)
+  transaction Transaction @relation(fields: [workspaceId, transactionId], references: [workspaceId, id], onDelete: Restrict)
+  @@unique([bankTransactionId, transactionId])
+  @@unique([bankTransactionId])
+  @@index([workspaceId, transactionId])
+  @@map("bank_transaction_links")
+}
+
+model BankReviewItem {
+  id String @id @default(cuid())
+  workspaceId String
+  bankTransactionId String
+  reasonCode String
+  status String @default("OPEN")
+  suggestionJson Json?
+  resolvedBy String?
+  resolvedAt DateTime?
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  bankTransaction BankTransaction @relation(fields: [workspaceId, bankTransactionId], references: [workspaceId, id], onDelete: Restrict)
+  @@unique([bankTransactionId, reasonCode])
+  @@index([workspaceId, status, createdAt])
+  @@map("bank_review_items")
+}
+
+model BankAuditEvent {
+  id String @id @default(cuid())
+  workspaceId String
+  actorType String
+  actorId String?
+  action String
+  resourceType String
+  resourceId String
+  metadataRedactedJson Json?
+  occurredAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  @@index([workspaceId, occurredAt])
+  @@map("bank_audit_events")
+}
+
+model BankSyncOutbox {
+  id String @id @default(cuid())
+  eventType String
+  aggregateId String
+  status String @default("PENDING")
+  retryCount Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  leaseUntil DateTime?
+  createdAt DateTime @default(now())
+  @@unique([eventType, aggregateId])
+  @@index([status, nextAttemptAt])
+  @@map("bank_sync_outbox")
+}
+
+model BankSyncJob {
+  id String @id @default(cuid())
+  workspaceId String
+  connectionId String
+  type String
+  status String @default("PENDING")
+  fromAt DateTime?
+  toAt DateTime?
+  cursor String?
+  metricsJson Json?
+  failureReason String?
+  startedAt DateTime?
+  endedAt DateTime?
+  connection BankConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Restrict)
+  @@index([connectionId, status])
+  @@map("bank_sync_jobs")
+}
+
+model BankReconciliationSnapshot {
+  id String @id @default(cuid())
+  workspaceId String
+  bankAccountId String
+  asOfAt DateTime
+  balanceType String
+  bankBalance Decimal @db.Decimal(20, 4)
+  ledgerBalance Decimal @db.Decimal(20, 4)
+  delta Decimal @db.Decimal(20, 4)
+  status String @default("OPEN")
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  account BankAccount @relation(fields: [workspaceId, bankAccountId], references: [workspaceId, id], onDelete: Restrict)
+  @@index([workspaceId, bankAccountId, asOfAt])
+  @@map("bank_reconciliation_snapshots")
+}
+
+model BankCategoryRule {
+  id String @id @default(cuid())
+  workspaceId String
+  priority Int @default(100)
+  conditionsJson Json
+  categoryId String
+  enabled Boolean @default(true)
+  ruleVersion Int @default(1)
+  createdBy String
+  createdAt DateTime @default(now())
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  category Category @relation(fields: [workspaceId, categoryId], references: [workspaceId, id], onDelete: Restrict)
+  @@index([workspaceId, enabled, priority])
+  @@map("bank_category_rules")
+}

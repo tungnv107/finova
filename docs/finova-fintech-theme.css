@@ -1,0 +1,227 @@
+/**
+ * FINOVA UI/UX v3 — starter visual system (reference implementation)
+ * Scope: presentation only. Merge into current Next.js/shadcn setup after audit.
+ * The approved logo asset is raster; DO NOT recolor or invert it.
+ * Recommended HTML: <html data-theme="light|dark"> OR next-themes .dark
+ */
+
+:root {
+  color-scheme: light;
+  --finova-brand: #1E5EFF;
+  --finova-brand-strong: #154CD4;
+  --finova-brand-navy: #0B1F4A;
+  --finova-teal: #18C5C2;
+  --finova-teal-text: #087D79;
+  --finova-bg-app: #F1F5FB;
+  --finova-surface: #FFFFFF;
+  --finova-surface-alt: #EAF1FB;
+  --finova-surface-raised: #FFFFFF;
+  --finova-text-main: #101B35;
+  --finova-text-subtle: #52627D;
+  --finova-border-soft: #DCE5F2;
+  --finova-border-control: #8494AB;
+  --finova-income: #047857;
+  --finova-expense: #C2410C;
+  --finova-warning: #B54708;
+  --finova-danger: #B42318;
+  --finova-chart-grid: #DCE5F2;
+  --finova-hero-text: #FFFFFF;
+  --finova-hero-gradient: linear-gradient(125deg,#0B1F4A 0%,#123E91 52%,#1E5EFF 100%);
+  --finova-shadow-card: 0 8px 28px rgb(11 31 74 / 7%);
+  --finova-shadow-hero: 0 18px 35px rgb(12 49 120 / 18%);
+  --finova-font: 'Plus Jakarta Sans','Be Vietnam Pro',Inter,system-ui,sans-serif;
+  --finova-radius-card: 20px;
+  --finova-radius-hero: 24px;
+  --finova-radius-control: 13px;
+  --finova-bottom-nav-height: 72px;
+}
+
+html[data-theme='dark'], html.dark {
+  color-scheme: dark;
+  --finova-brand: #7FA5FF;
+  --finova-brand-strong: #1E5EFF;
+  --finova-teal: #2DD4BF;
+  --finova-teal-text: #5EEAD4;
+  --finova-bg-app: #071326;
+  --finova-surface: #102341;
+  --finova-surface-alt: #183252;
+  --finova-surface-raised: #1D3859;
+  --finova-text-main: #F8FAFC;
+  --finova-text-subtle: #CBD5E1;
+  --finova-border-soft: #345273;
+  --finova-border-control: #6389B9;
+  --finova-income: #4ADE80;
+  --finova-expense: #FDBA74;
+  --finova-warning: #FBBF24;
+  --finova-danger: #FDA4AF;
+  --finova-chart-grid: #294565;
+  --finova-hero-gradient: linear-gradient(135deg,#102B61 0%,#0B1F4A 58%,#1746A2 100%);
+  --finova-shadow-card: 0 7px 24px rgb(0 0 0 / 13%);
+  --finova-shadow-hero: 0 18px 35px rgb(0 0 0 / 20%);
+}
+
+html, body { margin: 0; min-width: 0; max-width: 100%; }
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--finova-bg-app);
+  color: var(--finova-text-main);
+  font-family: var(--finova-font);
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 3px solid var(--finova-brand); outline-offset: 2px; }
+:where(button,a,input,select,textarea) { -webkit-tap-highlight-color: transparent; }
+:where(button,a) { touch-action: manipulation; }
+
+.finova-app, .finova-page, .finova-layout-grid, .finova-layout-grid > * { min-width: 0; }
+.finova-page { margin: 0 auto; width: 100%; max-width: 1440px; padding: 16px 16px 32px; }
+.finova-app { min-height: 100dvh; background: var(--finova-bg-app); }
+.finova-app h1, .finova-app h2, .finova-app p { overflow-wrap: break-word; }
+.finova-amount { font-variant-numeric: tabular-nums; white-space: nowrap; font-feature-settings: 'tnum'; }
+.finova-muted { color: var(--finova-text-subtle); }
+
+.finova-card {
+  min-width: 0;
+  background: var(--finova-surface);
+  border: 1px solid var(--finova-border-soft);
+  border-radius: var(--finova-radius-card);
+  box-shadow: var(--finova-shadow-card);
+}
+.finova-card--alt { background: var(--finova-surface-alt); }
+.finova-card--raised { background: var(--finova-surface-raised); }
+.finova-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--finova-radius-hero);
+  color: var(--finova-hero-text);
+  background: var(--finova-hero-gradient);
+  box-shadow: var(--finova-shadow-hero);
+  padding: clamp(20px,4vw,32px);
+}
+.finova-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto -12% -75% auto;
+  width: 75%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle,rgb(45 212 191 / 20%),transparent 72%);
+  z-index: -1;
+  pointer-events: none;
+}
+.finova-hero__balance { font-weight: 800; font-size: clamp(30px,5vw,48px); line-height: 1.16; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.finova-hero__label { color: rgb(255 255 255 / 86%); }
+
+.finova-button--primary {
+  background: var(--finova-brand-strong);
+  border: 1px solid transparent;
+  border-radius: var(--finova-radius-control);
+  color: #FFF;
+  min-height: 44px;
+  padding: 10px 18px;
+  font: inherit;
+  font-weight: 650;
+}
+.finova-input {
+  min-height: 44px;
+  border: 1px solid var(--finova-border-control);
+  background: var(--finova-surface);
+  border-radius: var(--finova-radius-control);
+  color: var(--finova-text-main);
+  font: inherit;
+  width: 100%;
+  padding: 10px 14px;
+}
+.finova-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--finova-border-soft);
+  border-radius: 999px;
+  background: var(--finova-surface-alt);
+  color: var(--finova-text-main);
+  padding: 8px 12px;
+  min-height: 40px;
+}
+.finova-kpi-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.finova-dashboard-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 16px; }
+
+/* Mobile nav: exactly 4 links plus central create button; never overflow horizontally. */
+.finova-mobile-bottom-nav {
+  position: fixed;
+  z-index: 70;
+  inset-inline: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(5,minmax(0,1fr));
+  align-items: start;
+  min-height: calc(var(--finova-bottom-nav-height) + env(safe-area-inset-bottom,0px));
+  padding: 6px 6px calc(8px + env(safe-area-inset-bottom,0px));
+  border-top: 1px solid var(--finova-border-soft);
+  background: var(--finova-surface);
+  box-shadow: 0 -5px 22px rgb(11 31 74 / 9%);
+}
+.finova-bottom-nav__link {
+  min-width: 0;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--finova-text-subtle);
+  text-align: center;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.finova-bottom-nav__link[aria-current='page'] {
+  color: var(--finova-brand);
+  background: var(--finova-surface-alt);
+}
+.finova-bottom-nav__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.finova-bottom-nav__fab-slot { min-width: 0; display: flex; justify-content: center; align-items: start; }
+.finova-bottom-nav__fab {
+  width: 56px;
+  height: 56px;
+  transform: translateY(-18px);
+  border-radius: 50%;
+  border: 3px solid var(--finova-surface);
+  color: #FFF;
+  background: linear-gradient(140deg,#2784FF,#154CD4);
+  box-shadow: 0 10px 22px rgb(30 94 255 / 35%);
+  font-size: 28px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.finova-page--with-bottom-nav {
+  padding-bottom: calc(var(--finova-bottom-nav-height) + env(safe-area-inset-bottom,0px) + 24px);
+}
+.finova-desktop-sidebar, .finova-tablet-rail { display: none; }
+
+@media (max-width: 359px) {
+  .finova-page { padding-inline: 12px; }
+  .finova-kpi-grid { gap: 8px; }
+  .finova-bottom-nav__link { font-size: 10.5px; }
+  .finova-bottom-nav__fab { width: 52px; height: 52px; }
+}
+@media (min-width: 768px) {
+  .finova-mobile-bottom-nav { display: none; }
+  .finova-page--with-bottom-nav { padding-bottom: 32px; }
+  .finova-tablet-rail { display: flex; }
+  .finova-page { padding: 24px; }
+  .finova-dashboard-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px; }
+}
+@media (min-width: 1024px) {
+  .finova-tablet-rail { display: none; }
+  .finova-desktop-sidebar { display: flex; }
+  .finova-page { padding: 28px 32px; }
+  .finova-kpi-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
