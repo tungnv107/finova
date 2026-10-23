@@ -1,0 +1,16 @@
+# Optional server deployment overlay: connect only the web app to an existing
+# user-defined Docker network shared with Nginx Proxy Manager (NPM).
+# Usage: docker compose -f compose.yaml -f compose.npm.yaml --profile app up -d --build app
+# Set FINOVA_NPM_NETWORK in .env to a network already attached to the NPM container.
+services:
+  app:
+    networks:
+      default: {}
+      npm_proxy:
+        aliases:
+          - finova-app
+
+networks:
+  npm_proxy:
+    external: true
+    name: ${FINOVA_NPM_NETWORK:?Set FINOVA_NPM_NETWORK to a Docker network attached to NPM}

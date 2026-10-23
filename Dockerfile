@@ -1,5 +1,9 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
+# NEXT_PUBLIC_* values are inlined into the browser bundle during next build.
+# This is a public origin, never a credential.
+ARG NEXT_PUBLIC_APP_URL=http://localhost:3002
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci

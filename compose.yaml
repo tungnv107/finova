@@ -21,6 +21,8 @@ services:
     build:
       context: .
       target: production
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3002}
     image: ${FINOVA_APP_IMAGE:-finova:local}
     restart: unless-stopped
     init: true
