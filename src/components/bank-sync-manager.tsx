@@ -3,6 +3,8 @@
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseCsv } from "@/lib/csv-import";
+import { AlertCircle, ArrowDownLeft, ArrowUpRight, CheckCircle2, ChevronDown, CircleHelp, Clock3, ExternalLink, FileSpreadsheet, Landmark, Link2, LockKeyhole, RefreshCw, Search, ShieldCheck, UploadCloud, Wallet } from "lucide-react";
+import styles from "./bank-sync.module.css";
 
 type WalletOption = { id: string; name: string; type: string };
 type Review = { id: string; bankTransactionId: string; reasonCode: string; description: string; amount: string;
@@ -21,6 +23,9 @@ type Props = { wallets: WalletOption[]; categories: { id: string; name: string; 
 
 const formatMoney = (value: string, direction: string) => `${direction === "IN" ? "+" : "−"}${Number(value).toLocaleString("vi-VN")} ₫`;
 const formatDate = (value: string | Date) => new Date(value).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+const connectionStatusLabel = (status: string) => ({ ACTIVE: "Đang hoạt động", PAUSED: "Đã tạm dừng", PENDING: "Chờ xác minh", REVOKED: "Đã ngắt kết nối" })[status as "ACTIVE"] || status;
+const sourceStatusLabel = (status: string) => ({ REVIEW_REQUIRED: "Chờ xác nhận", LINKED: "Đã liên kết", IGNORED: "Đã bỏ qua", STAGED: "Đang chờ xử lý", RESOLVING: "Đang xử lý" })[status as "STAGED"] || status;
+const bookingStatusLabel = (status: string) => ({ BOOKED: "Đã hạch toán", PENDING: "Đang chờ", REVERSED: "Đã hoàn" })[status as "BOOKED"] || status;
 
 async function jsonRequest(path: string, method: string, body: unknown) {
   const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -54,13 +59,13 @@ function ReviewCard({ item, wallets, categories, transactions }: { item: Review;
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Lỗi ghi nhận."); }
     finally { setBusy(false); }
   }
-  return <article className="card card-pad" style={{ marginBottom: 12 }}>
-    <div className="section-header"><div><strong>{formatMoney(item.amount, item.direction)}</strong><p className="section-subtitle">{item.accountMasked} · {formatDate(item.occurredAt)} · {item.providerCode}</p></div>
-      <span className="badge">{item.bookingStatus} / {item.reasonCode}</span></div>
-    <p>{item.description || "Không có diễn giải"}</p>
-    {item.beforeCutover && <p className="section-subtitle" role="note">Trước mốc chuyển đổi: chỉ nên liên kết giao dịch đã có hoặc bỏ qua để tránh ghi số dư hai lần.</p>}
-    {!eligible && <p className="section-subtitle" role="status">Dòng này cần tra soát nguồn hoặc đợi trạng thái BOOKED; chưa thể ghi sổ.</p>}
-    <div className="form-grid" style={{ marginTop: 12 }}>
+  return <article className={`${styles.reviewCard} card card-pad`}>
+    <div className={styles.reviewTop}><div className={styles.reviewAmount}><span className={item.direction === "IN" ? styles.incomeIcon : styles.expenseIcon}>{item.direction === "IN" ? <ArrowDownLeft size={19} /> : <ArrowUpRight size={19} />}</span><div><strong className={item.direction === "IN" ? styles.incomeText : styles.expenseText}>{formatMoney(item.amount, item.direction)}</strong><p className={styles.muted}>{item.accountMasked} · {formatDate(item.occurredAt)} · {item.providerCode}</p></div></div>
+      <span className={styles.statusWarning}>{bookingStatusLabel(item.bookingStatus)} · {item.reasonCode}</span></div>
+    <p className={styles.reviewDescription}>{item.description || "Không có diễn giải"}</p>
+    {item.beforeCutover && <p className={styles.inlineNotice} role="note"><AlertCircle size={16} /> Trước mốc chuyển đổi: chỉ liên kết giao dịch đã có hoặc bỏ qua để tránh ghi số dư hai lần.</p>}
+    {!eligible && <p className={styles.inlineNotice} role="status"><AlertCircle size={16} /> Dòng này cần tra soát nguồn hoặc đợi trạng thái đã hạch toán trước khi ghi sổ.</p>}
+    <div className="form-grid">
       <div className="field"><label htmlFor={`action-${item.id}`}>Cách xử lý</label><select id={`action-${item.id}`} value={selectedAction} onChange={e => setAction(e.target.value)}>
         {eligible && !item.beforeCutover && <option value="POST">Ghi thu/chi vào sổ cái</option>}
         {eligible && !item.beforeCutover && <option value="TRANSFER">Chuyển tiền giữa các ví</option>}
@@ -74,7 +79,7 @@ function ReviewCard({ item, wallets, categories, transactions }: { item: Review;
         <option value="">Chọn giao dịch</option>{matching.map(t => <option key={t.id} value={t.id}>{formatMoney(t.amount, item.direction)} · {t.note || t.kind} · {formatDate(t.occurredAt)}</option>)}</select></div>}
     </div>
     {error && <p role="alert" className="form-error">{error}</p>}
-    <div className="form-footer"><button className="button button-primary" type="button" disabled={busy || (selectedAction === "POST" && !options.length) || (selectedAction === "TRANSFER" && !otherWalletId) || (selectedAction === "LINK" && !transactionId)} onClick={resolve}>Xác nhận xử lý</button></div>
+    <div className={styles.actionsEnd}><button className="button button-primary" type="button" disabled={busy || (selectedAction === "POST" && !options.length) || (selectedAction === "TRANSFER" && !otherWalletId) || (selectedAction === "LINK" && !transactionId)} onClick={resolve}><CheckCircle2 size={16} /> Xác nhận xử lý</button></div>
   </article>;
 }
 
@@ -220,95 +225,121 @@ export function BankSyncManager({ wallets, categories, connections, reviews, sou
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Không kiểm tra được trạng thái SePay."); }
     finally { setBusy(false); }
   }
-  return <>
-    <div className="page-head feature-page-head"><div><h1 className="page-title">Đồng bộ sao kê ngân hàng</h1>
-      <p className="subtitle">Nhập sao kê có kiểm soát, xem xét giao dịch và ghi sổ từ nguồn có thể truy vết.</p></div></div>
-    <div className="card card-pad" role="status" style={{ marginBottom: 20 }}><h2 className="section-title">Tình trạng hỗ trợ</h2>
-      <p>Hỗ trợ <strong>nhập tệp CSV/XLSX</strong>{sandboxEnabled ? " và mô phỏng nội bộ" : ""}{sepayEnabled ? ". SePay Bank Hub đã được bật theo cấu hình đối tác; cần hoàn tất Hosted Link và xác minh tài khoản trước khi đồng bộ." : ". Kết nối SePay Bank Hub đang chờ cấu hình đối tác."} Mọi giao dịch đều cần người dùng xác nhận trước khi ghi sổ.</p>
-      <p className="section-subtitle">Sao kê có thể chậm hoặc thiếu dòng. Không nhập OTP/mật khẩu ngân hàng vào Finova.</p></div>
-    <section className="card card-pad" style={{ marginBottom: 20 }}><h2 className="section-title">Tải sao kê CSV/XLSX</h2>
-      <p className="section-subtitle">Chọn ví ngân hàng, ánh xạ cột ngày, tiền vào/ra và diễn giải. Xem trước không ghi sổ; xác nhận sẽ đưa các dòng hợp lệ vào hàng đợi để kiểm tra thủ công.</p>
-      <div className="form-grid" style={{ marginTop: 18 }}>
-        <div className="field"><label htmlFor="bank-statement-file">Tệp sao kê (tối đa 5 MB)</label><input id="bank-statement-file" type="file" accept=".csv,.xlsx" onChange={e => void chooseFile(e.target.files?.[0])} /></div>
-        <div className="field"><label htmlFor="bank-statement-wallet">Ví ngân hàng</label><select id="bank-statement-wallet" value={walletId} onChange={e => { setWalletId(e.target.value); setPreview(null); }}>
-          {bankWallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
-        {headers.length > 0 && <>{column("bank-col-date", "Cột ngày", dateColumn, setDateColumn)}
+  const activeConnections = connections.filter(c => c.status === "ACTIVE").length;
+  const hasActiveSePay = sepayConnections.some(c => c.status === "ACTIVE");
+
+  return <div className={styles.page}>
+    <header className={styles.hero}>
+      <div className={styles.heroContent}>
+        <span className={styles.heroEyebrow}><ShieldCheck size={15} /> KẾT NỐI NGÂN HÀNG AN TOÀN</span>
+        <h1>Đồng bộ sao kê ngân hàng</h1>
+        <p>Quản lý sao kê tập trung, đối soát giao dịch và cập nhật sổ thu chi với sự kiểm soát của bạn.</p>
+        <div className={styles.heroPills}><span><CheckCircle2 size={15} /> Có bước xác nhận trước ghi sổ</span><span><LockKeyhole size={15} /> Không lưu mật khẩu ngân hàng</span></div>
+      </div>
+      <div className={styles.heroIllustration} aria-hidden="true"><div className={styles.heroRing}><Landmark size={52} strokeWidth={1.4} /><span className={styles.heroCheck}><CheckCircle2 size={22} /></span></div></div>
+    </header>
+
+    <div className={styles.summaryGrid} aria-label="Tổng quan đồng bộ sao kê">
+      <div className={styles.summaryCard}><span className={`${styles.summaryIcon} ${styles.iconBlue}`}><Link2 size={21} /></span><div><span className={styles.summaryLabel}>Nguồn đang hoạt động</span><strong>{activeConnections}</strong><small>{connections.length} nguồn đã thiết lập</small></div></div>
+      <div className={styles.summaryCard}><span className={`${styles.summaryIcon} ${styles.iconAmber}`}><Clock3 size={21} /></span><div><span className={styles.summaryLabel}>Cần xác nhận</span><strong>{reviews.length}</strong><small>Giao dịch chờ kiểm tra</small></div></div>
+      <div className={styles.summaryCard}><span className={`${styles.summaryIcon} ${styles.iconTeal}`}><FileSpreadsheet size={21} /></span><div><span className={styles.summaryLabel}>Dòng sao kê gần đây</span><strong>{sources.length}</strong><small>Tối đa 50 dòng mới nhất</small></div></div>
+    </div>
+
+    <div className={styles.supportNote} role="note"><ShieldCheck size={19} /><p><strong>Đồng bộ có kiểm soát.</strong> Sao kê nhập từ tệp hoặc SePay được đưa vào hàng chờ để đối soát trước khi ghi sổ. Dữ liệu từ ngân hàng có thể đến chậm; tuyệt đối không nhập mật khẩu hoặc OTP vào Finova.</p></div>
+
+    {error && <div className={styles.errorNotice} role="alert"><AlertCircle size={19} /><span>{error}</span></div>}
+    {message && <div className={styles.successNotice} role="status"><CheckCircle2 size={19} /><span>{message}</span></div>}
+
+    <div className={styles.setupGrid}>
+      <section className={`${styles.panel} card`} aria-labelledby="bank-upload-heading">
+        <div className={styles.panelHeader}><span className={`${styles.panelIcon} ${styles.iconBlue}`}><UploadCloud size={23} /></span><div><span className={styles.eyebrow}>NHẬP SAO KÊ</span><h2 id="bank-upload-heading">Tải tệp CSV / XLSX</h2><p>Nhập sao kê có sẵn từ ngân hàng của bạn.</p></div></div>
+        <label htmlFor="bank-statement-file" className={styles.uploadZone}>
+          <span className={styles.uploadZoneIcon}><FileSpreadsheet size={25} /></span>
+          <span className={styles.uploadZoneText}><strong>{file ? file.name : "Chọn tệp sao kê để tải lên"}</strong><small>{file ? "Đã chọn tệp · Nhấn để thay đổi" : "Hỗ trợ định dạng CSV, XLSX · Tối đa 5 MB"}</small></span>
+          <span className={styles.uploadZoneAction}>Chọn tệp</span>
+          <input id="bank-statement-file" type="file" accept=".csv,.xlsx" onChange={e => void chooseFile(e.target.files?.[0])} />
+        </label>
+        <div className={styles.fields}>
+          <div className="field"><label htmlFor="bank-statement-wallet">Ví nhận sao kê</label><select id="bank-statement-wallet" value={walletId} onChange={e => { setWalletId(e.target.value); setPreview(null); setSepayAccepted(false); }}>
+            {!bankWallets.length && <option value="">Chưa có ví ngân hàng</option>}{bankWallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+          <div className="field"><label htmlFor="bank-cutover">Bắt đầu ghi nhận từ ngày</label><input id="bank-cutover" type="date" value={cutoverDay} onChange={e => { setCutoverDay(e.target.value); setPreview(null); }} /></div>
+        </div>
+        {headers.length > 0 && <div className={styles.mappingSection}><div className={styles.mappingTitle}><CheckCircle2 size={17} /><strong>Ánh xạ cột sao kê</strong></div><div className={styles.fields}>
+          {column("bank-col-date", "Cột ngày", dateColumn, setDateColumn)}
+          {column("bank-col-description", "Cột diễn giải", descriptionColumn, setDescriptionColumn)}
           {column("bank-col-in", "Cột tiền vào", inflowColumn, setInflowColumn, true)}
           {column("bank-col-out", "Cột tiền ra", outflowColumn, setOutflowColumn, true)}
-          {column("bank-col-description", "Cột diễn giải", descriptionColumn, setDescriptionColumn)}
-          {column("bank-col-reference", "Cột tham chiếu", referenceColumn, setReferenceColumn, true)}</>}
-        <div className="field"><label htmlFor="bank-cutover">Mốc bắt đầu ghi nhận biến động mới</label><input id="bank-cutover" type="date" value={cutoverDay} onChange={e => { setCutoverDay(e.target.value); setPreview(null); }} /></div>
-      </div>
-      <p className="section-subtitle">Dòng trước mốc này chỉ dùng để đối chiếu; không ghi thêm vào số dư ví. Chọn mốc cẩn thận nếu ví đã có số dư đầu kỳ hoặc giao dịch thủ công.</p>
-      <div className="form-footer"><button type="button" className="button button-primary" disabled={busy || !file || !walletId || !dateColumn || !descriptionColumn || (!inflowColumn && !outflowColumn)} onClick={() => void upload("preview")}>Xem trước</button></div>
-      {preview && <div style={{ marginTop: 16 }}><p role="status">Tổng {preview.total} dòng · Hợp lệ {preview.validCount} · Cần sửa {preview.invalidCount}</p>
-        <div className="table-wrap"><table><thead><tr><th>Dòng</th><th>Ngày</th><th>Chiều</th><th>Số tiền</th><th>Kết quả</th></tr></thead><tbody>
-          {preview.rows.map(row => <tr key={row.rowNumber}><td>{row.rowNumber}</td><td>{row.date || "—"}</td><td>{row.direction || "—"}</td><td>{row.amount ? Number(row.amount).toLocaleString("vi-VN") : "—"}</td><td>{row.error || "Hợp lệ"}</td></tr>)}
-        </tbody></table></div><p className="section-subtitle">Hiển thị tối đa 100 dòng đầu. Không tự động ghi nhận các dòng lỗi.</p>
-        <button type="button" className="button button-primary" disabled={busy || !preview.validCount} onClick={() => void upload("commit")}>Xác nhận đưa vào hàng đợi</button></div>}
+          {column("bank-col-reference", "Cột tham chiếu", referenceColumn, setReferenceColumn, true)}
+        </div></div>}
+        <p className={styles.hint}><CircleHelp size={16} /> Giao dịch trước ngày bắt đầu chỉ dùng để đối chiếu, không cộng lại vào số dư ví.</p>
+        <div className={styles.panelActions}><button type="button" className="button button-primary" disabled={busy || !file || !walletId || !dateColumn || !descriptionColumn || (!inflowColumn && !outflowColumn)} onClick={() => void upload("preview")}><FileSpreadsheet size={17} /> Xem trước sao kê</button></div>
+        {preview && <div className={styles.previewPanel}><div className={styles.previewHeader}><strong>Kết quả kiểm tra tệp</strong><div className={styles.previewStats}><span>{preview.total} dòng</span><span className={styles.incomeText}>{preview.validCount} hợp lệ</span><span className={styles.expenseText}>{preview.invalidCount} cần sửa</span></div></div>
+          <div className={styles.tableScroll}><table><thead><tr><th>Dòng</th><th>Ngày</th><th>Chiều</th><th>Số tiền</th><th>Kết quả</th></tr></thead><tbody>
+            {preview.rows.map(row => <tr key={row.rowNumber}><td>{row.rowNumber}</td><td>{row.date || "—"}</td><td>{row.direction === "IN" ? "Tiền vào" : row.direction === "OUT" ? "Tiền ra" : "—"}</td><td>{row.amount ? Number(row.amount).toLocaleString("vi-VN") : "—"}</td><td>{row.error || "Hợp lệ"}</td></tr>)}
+          </tbody></table></div><p className={styles.muted}>Hiển thị tối đa 100 dòng. Dòng lỗi sẽ không được đưa vào hàng chờ.</p>
+          <div className={styles.panelActions}><button type="button" className="button button-primary" disabled={busy || !preview.validCount} onClick={() => void upload("commit")}><CheckCircle2 size={16} /> Xác nhận đưa vào hàng đợi</button></div></div>}
+      </section>
+
+      {sepayEnabled ? <section className={`${styles.panel} card`} aria-labelledby="sepay-heading">
+        <div className={styles.panelHeader}><span className={`${styles.panelIcon} ${styles.iconTeal}`}><Landmark size={23} /></span><div><span className={styles.eyebrow}>KẾT NỐI TỰ ĐỘNG</span><h2 id="sepay-heading">SePay Bank Hub</h2><p>Liên kết tài khoản và đồng bộ biến động số dư.</p></div>
+          <span className={hasActiveSePay ? styles.statusSuccess : styles.statusNeutral}>{hasActiveSePay ? "Đang kết nối" : "Chưa kết nối"}</span></div>
+        <div className={styles.step}><span className={styles.stepNumber}>1</span><div className={styles.stepContent}><h3>Liên kết ngân hàng</h3><p>Thực hiện xác minh trên trang bảo mật của SePay.</p>
+          <div className={styles.actionRow}><button type="button" className="button button-outline" disabled={busy} onClick={() => void startSePay()}><Link2 size={16} /> Tạo liên kết SePay</button>
+            {hostedLink && <a className="button button-primary" href={hostedLink} target="_blank" rel="noopener noreferrer"><ExternalLink size={16} /> Mở trang liên kết</a>}</div></div></div>
+        <div className={styles.step}><span className={styles.stepNumber}>2</span><div className={styles.stepContent}><h3>Chọn tài khoản</h3><p>Tải tài khoản đã xác minh và gắn với ví trong Finova.</p>
+          <div className={styles.fields}>
+            <div className="field"><label htmlFor="sepay-connection">Phiên kết nối SePay</label><select id="sepay-connection" value={sepayConnectionId} onChange={e => { setSepayConnectionId(e.target.value); setSepayAccounts([]); setSepayAccountXid(""); setSepayAccepted(false); }}>
+              <option value="">Chọn kết nối</option>{sepayConnections.map(c => <option key={c.id} value={c.id}>{c.id.slice(-8)} · {connectionStatusLabel(c.status)}</option>)}</select></div>
+            <div className="field"><label htmlFor="sepay-account">Tài khoản đã xác minh</label><select id="sepay-account" value={sepayAccountXid} onChange={e => setSepayAccountXid(e.target.value)} disabled={!sepayAccounts.length}>
+              <option value="">Chọn tài khoản</option>{sepayAccounts.map(a => <option key={a.xid} value={a.xid}>{a.bankCode} · {a.accountMasked}</option>)}</select></div>
+          </div>
+          <div className={styles.actionRow}><button type="button" className="button button-outline" disabled={busy || !sepayConnectionId} onClick={() => void loadSePayAccounts()}><RefreshCw size={16} /> Tải danh sách tài khoản</button></div>
+        </div></div>
+        <div className={`${styles.step} ${styles.stepLast}`}><span className={styles.stepNumber}>3</span><div className={styles.stepContent}><h3>Xác nhận đồng bộ</h3><div className={`${styles.walletField} field`}><label htmlFor="sepay-wallet"><Wallet size={16} /> Ví nhận giao dịch</label><select id="sepay-wallet" value={walletId} onChange={e => { setWalletId(e.target.value); setSepayAccepted(false); }}>
+          {!bankWallets.length && <option value="">Chưa có ví ngân hàng</option>}{bankWallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+          <label htmlFor="sepay-consent" className={styles.consent}><input id="sepay-consent" type="checkbox" checked={sepayAccepted} onChange={e => setSepayAccepted(e.target.checked)} /><span>Tôi đồng ý cho Finova đồng bộ lịch sử giao dịch tài khoản này để đối soát với ví đã chọn.</span></label>
+          <button type="button" className="button button-primary" disabled={busy || !sepayConnectionId || !sepayAccountXid || !walletId || !sepayAccepted} onClick={() => void attachSePay()}><CheckCircle2 size={16} /> Gắn tài khoản với ví</button>
+        </div></div>
+        {hasActiveSePay && <div className={styles.syncHistory}><div className={styles.syncHistoryTitle}><RefreshCw size={18} /><div><h3>Đồng bộ lịch sử giao dịch</h3><p>Tải bổ sung giao dịch trong khoảng thời gian tối đa 31 ngày.</p></div></div>
+          <div className={styles.fields}><div className="field"><label htmlFor="sepay-from">Từ ngày</label><input id="sepay-from" type="date" value={sepayFrom} onChange={e => setSepayFrom(e.target.value)} /></div>
+            <div className="field"><label htmlFor="sepay-to">Đến ngày</label><input id="sepay-to" type="date" value={sepayTo} onChange={e => setSepayTo(e.target.value)} /></div></div>
+          <div className={styles.actionRow}>{sepayConnections.filter(c => c.status === "ACTIVE").map(c => <button key={c.id} type="button" className="button button-outline" disabled={busy} onClick={() => void syncSePay(c.id)}><RefreshCw size={16} /> Đồng bộ kết nối {c.id.slice(-8)}</button>)}</div>
+          <p className={styles.muted}>Đối chiếu các sai lệch tại SePay trước khi duyệt ghi sổ.</p></div>}
+      </section> : <section className={`${styles.panel} card`}><div className={styles.panelHeader}><span className={`${styles.panelIcon} ${styles.iconTeal}`}><Landmark size={23} /></span><div><span className={styles.eyebrow}>KẾT NỐI TỰ ĐỘNG</span><h2>SePay Bank Hub</h2><p>Đang chờ cấu hình kết nối đối tác.</p></div></div><div className={styles.emptyCompact}><LockKeyhole size={26} /><strong>Chưa bật kết nối tự động</strong><p>Bạn vẫn có thể nhập sao kê CSV hoặc XLSX ở mục bên cạnh.</p></div></section>}
+    </div>
+
+    {sandboxEnabled && <section className={`${styles.sandbox} card`}><div><strong>Kiểm thử webhook nội bộ</strong><p>Chỉ dành cho môi trường phát triển; không sử dụng tài khoản ngân hàng thật.</p></div><button type="button" className="button button-outline" disabled={busy || !walletId} onClick={() => void startSandbox()}>Tạo kết nối thử nghiệm</button></section>}
+
+    <section className={styles.recordsSection} aria-labelledby="connections-heading"><div className={styles.sectionHeading}><div><span className={styles.eyebrow}>QUẢN LÝ NGUỒN</span><h2 id="connections-heading">Nguồn và tài khoản <span>{connections.length}</span></h2><p>Kiểm tra trạng thái và quyền đồng bộ của từng nguồn sao kê.</p></div></div>
+      {!connections.length ? <div className={styles.emptyState}><Link2 size={27} /><strong>Chưa có nguồn sao kê</strong><p>Hãy tải tệp hoặc liên kết ngân hàng để bắt đầu nhận giao dịch.</p></div> : <div className={styles.connectionList}>{connections.map(c => <article className={`${styles.connectionCard} card`} key={c.id}>
+        <div className={styles.connectionMain}><span className={`${styles.connectionIcon} ${c.status === "REVOKED" ? styles.iconMuted : styles.iconBlue}`}><Landmark size={21} /></span><div className={styles.connectionDetails}><div className={styles.connectionTitle}><h3>{c.providerCode === "SANDBOX" ? "Nguồn mô phỏng" : c.providerCode === "SEPAY_BANKHUB" ? "SePay Bank Hub" : "Sao kê tải lên"}</h3><span className={c.status === "ACTIVE" ? styles.statusSuccess : c.status === "REVOKED" ? styles.statusRevoked : styles.statusNeutral}>{connectionStatusLabel(c.status)}</span></div>
+          <p>{c.accounts.length ? c.accounts.map(a => `${a.accountMasked} · ${wallets.find(w => w.id === a.walletId)?.name || "Chưa gắn ví"}`).join(" · ") : "Chưa có tài khoản được gắn ví"}</p>
+          <div className={styles.connectionMeta}><span>Chính sách: {c.postingPolicy === "REVIEW_FIRST" ? "Duyệt trước khi ghi sổ" : c.postingPolicy}</span><span>Mốc bắt đầu: {c.cutoverAt ? formatDate(c.cutoverAt) : "—"}</span><span>Đồng bộ gần nhất: {c.lastSyncedAt ? formatDate(c.lastSyncedAt) : "Chưa có"}</span></div>
+        </div></div>
+        {c.status !== "REVOKED" && <div className={styles.connectionActions}><button className="button button-outline" type="button" disabled={busy} onClick={() => void changeConnection(c.id, c.status === "ACTIVE" ? "PAUSE" : "RESUME")}>{c.status === "ACTIVE" ? "Tạm dừng" : "Tiếp tục"}</button><button className="button button-outline" type="button" disabled={busy} onClick={() => void changeConnection(c.id, "REVOKE")}>{c.providerCode === "SEPAY_BANKHUB" ? "Dừng đồng bộ Finova" : "Ngắt nguồn"}</button>
+          {c.providerCode === "SEPAY_BANKHUB" && <button type="button" className="button button-outline" disabled={busy} onClick={() => void refreshSePay(c.id)}><RefreshCw size={15} /> Kiểm tra SePay</button>}
+          {c.providerCode === "SEPAY_BANKHUB" && c.accounts.filter(a => a.status === "ACTIVE").map(a => <Fragment key={a.id}><button type="button" className="button button-outline" disabled={busy} onClick={() => void startSePayUnlink(c.id, a.id)}>Hủy trên SePay · {a.accountMasked}</button>{unlinkLink?.accountId === a.id && <a className="button button-primary" href={unlinkLink.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> Xác nhận hủy</a>}</Fragment>)}
+        </div>}
+        {c.providerCode === "SEPAY_BANKHUB" && <p className={styles.connectionFootnote}>Ngắt tại Finova chỉ dừng tiếp nhận sao kê. Để thu hồi quyền phía ngân hàng, cần hoàn tất xác nhận hủy trên SePay.</p>}
+      </article>)}</div>}
     </section>
-    {sandboxEnabled && <section className="card card-pad" style={{ marginBottom: 20 }}><h2 className="section-title">Thử nghiệm webhook nội bộ</h2><p className="section-subtitle">Chỉ dành cho môi trường phát triển; không liên kết ngân hàng thật.</p>
-      <button type="button" className="button button-outline" disabled={busy || !walletId} onClick={() => void startSandbox()}>Tạo kết nối sandbox cho ví đang chọn</button></section>}
-    {sepayEnabled && <section className="card card-pad" style={{ marginBottom: 20 }} aria-label="SePay Bank Hub">
-      <h2 className="section-title">Đồng bộ tự động qua SePay Bank Hub</h2>
-      <p className="section-subtitle">Liên kết ngân hàng trên trang SePay. Finova chỉ nhận sao kê khi tài khoản đã được gắn với ví và bạn đồng ý đồng bộ. Không nhập mật khẩu hoặc OTP ngân hàng vào Finova.</p>
-      <div className="form-footer"><button type="button" className="button button-outline" disabled={busy} onClick={() => void startSePay()}>Tạo Hosted Link SePay</button>
-        {hostedLink && <a className="button button-primary" href={hostedLink} target="_blank" rel="noopener noreferrer">Mở trang liên kết SePay</a>}</div>
-      <div className="form-grid" style={{ marginTop: 16 }}>
-        <div className="field"><label htmlFor="sepay-connection">Kết nối SePay</label><select id="sepay-connection" value={sepayConnectionId} onChange={e => { setSepayConnectionId(e.target.value); setSepayAccounts([]); }}>
-          <option value="">Chọn kết nối</option>{sepayConnections.map(c => <option key={c.id} value={c.id}>{c.id.slice(-8)} · {c.status}</option>)}</select></div>
-        <div className="field"><label htmlFor="sepay-account">Tài khoản đã liên kết</label><select id="sepay-account" value={sepayAccountXid} onChange={e => setSepayAccountXid(e.target.value)}>
-          <option value="">Chọn tài khoản</option>{sepayAccounts.map(a => <option key={a.xid} value={a.xid}>{a.bankCode} · {a.accountMasked}</option>)}</select></div>
-      </div>
-      <button className="button button-outline" type="button" disabled={busy || !sepayConnectionId} onClick={() => void loadSePayAccounts()}>Tải tài khoản từ SePay</button>
-      <div className="field" style={{ marginTop: 14 }}><label htmlFor="sepay-consent"><input id="sepay-consent" type="checkbox" checked={sepayAccepted} onChange={e => setSepayAccepted(e.target.checked)} /> Tôi đồng ý cho Finova đồng bộ lịch sử giao dịch tài khoản này để đối soát với ví đã chọn.</label></div>
-      <button type="button" className="button button-primary" disabled={busy || !sepayConnectionId || !sepayAccountXid || !walletId || !sepayAccepted} onClick={() => void attachSePay()}>Gắn tài khoản với ví đã chọn</button>
-      {sepayConnections.some(c => c.status === "ACTIVE") && <div style={{ marginTop: 20 }}><h3>Đồng bộ lịch sử giao dịch</h3>
-        <div className="form-grid"><div className="field"><label htmlFor="sepay-from">Từ ngày</label><input id="sepay-from" type="date" value={sepayFrom} onChange={e => setSepayFrom(e.target.value)} /></div>
-          <div className="field"><label htmlFor="sepay-to">Đến ngày</label><input id="sepay-to" type="date" value={sepayTo} onChange={e => setSepayTo(e.target.value)} /></div></div>
-        {sepayConnections.filter(c => c.status === "ACTIVE").map(c => <button key={c.id} type="button" className="button button-outline" disabled={busy} onClick={() => void syncSePay(c.id)}>Đồng bộ tài khoản {c.id.slice(-8)}</button>)}
-        <p className="section-subtitle">Tối đa 31 ngày/lần. Trường hợp sai lệch, hãy đối soát giao dịch tại SePay trước khi duyệt ghi sổ.</p></div>}
-    </section>}
-    {error && <p className="form-error" role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    <section style={{ marginBottom: 22 }}><h2 className="section-title">Nguồn và tài khoản ({connections.length})</h2>
-      {!connections.length ? <div className="card card-pad"><p>Chưa có nguồn sao kê. Tải tệp để bắt đầu.</p></div> : connections.map(c => <article className="card card-pad" key={c.id} style={{ marginTop: 10 }}>
-        <div className="section-header"><div><strong>{c.providerCode === "SANDBOX" ? "Nguồn mô phỏng" : c.providerCode === "SEPAY_BANKHUB" ? "SePay Bank Hub" : "Sao kê tải lên"}</strong><p className="section-subtitle">{c.accounts.map(a => `${a.accountMasked} · ${wallets.find(w => w.id === a.walletId)?.name || "Chưa gắn ví"}`).join(", ")}</p></div>
-          <span className="badge">{c.status}</span></div>
-        <p className="section-subtitle">Chính sách: {c.postingPolicy} · Mốc cutover: {c.cutoverAt ? formatDate(c.cutoverAt) : "—"} · Đồng bộ gần nhất: {c.lastSyncedAt ? formatDate(c.lastSyncedAt) : "—"}</p>
-        {c.status !== "REVOKED" && <div className="import-actions">
-          <button className="button button-outline" type="button" disabled={busy} onClick={() => void changeConnection(c.id, c.status === "ACTIVE" ? "PAUSE" : "RESUME")}>{c.status === "ACTIVE" ? "Tạm dừng" : "Tiếp tục"}</button>
-          <button className="button button-outline" type="button" disabled={busy} onClick={() => void changeConnection(c.id, "REVOKE")}>{c.providerCode === "SEPAY_BANKHUB" ? "Dừng đồng bộ Finova" : "Ngắt nguồn"}</button></div>}
-        {c.providerCode === "SEPAY_BANKHUB" && c.status !== "REVOKED" && <div style={{ marginTop: 12 }}>
-          <p className="section-subtitle">Muốn hủy tại ngân hàng, mở luồng xác nhận SePay của từng tài khoản. Sau khi hoàn tất, kiểm tra trạng thái để Finova ngừng nhận sao kê của tài khoản đã hủy.</p>
-          <div className="import-actions"><button type="button" className="button button-outline" disabled={busy} onClick={() => void refreshSePay(c.id)}>Kiểm tra trạng thái SePay</button>
-            {c.accounts.filter(a => a.status === "ACTIVE").map(a => <Fragment key={a.id}>
-              <button type="button" className="button button-outline" disabled={busy} onClick={() => void startSePayUnlink(c.id, a.id)}>Hủy trên SePay · {a.accountMasked}</button>
-              {unlinkLink?.accountId === a.id && <a className="button button-primary" href={unlinkLink.url} target="_blank" rel="noopener noreferrer">Mở trang xác nhận hủy</a>}
-            </Fragment>)}</div></div>}
-        {c.providerCode === "SEPAY_BANKHUB" && <p className="section-subtitle">Thu hồi quyền tại Finova dừng đồng bộ và giải phóng liên kết ví, nhưng không tự hủy quyền tại SePay.</p>}
-      </article>)}</section>
-    <section style={{ marginBottom: 22 }}><h2 className="section-title">Cần xác nhận ({reviews.length})</h2>
-      {!reviews.length ? <div className="card card-pad"><p>Chưa có giao dịch cần xác nhận. Worker sẽ chuyển các dòng đã nhập thành mục xem xét.</p></div> : reviews.map(r => <ReviewCard key={r.id} item={r} wallets={wallets} categories={categories} transactions={transactions} />)}</section>
-    <section className="card card-pad"><h2 className="section-title">Lịch sử nguồn ({sources.length} gần nhất)</h2>
-      <p className="section-subtitle">Bộ lọc áp dụng cho tối đa 50 dòng gần nhất. Các thông tin gốc từ ngân hàng/tệp được giữ nguyên để tra soát.</p>
-      {sources.length > 0 && <div className="form-grid" style={{ marginTop: 12, marginBottom: 16 }}>
-        <div className="field"><label htmlFor="bank-source-query">Tìm nguồn / diễn giải / mã tham chiếu</label><input id="bank-source-query" value={sourceQuery} onChange={e => setSourceQuery(e.target.value)} placeholder="Nhập từ khóa" /></div>
-        <div className="field"><label htmlFor="bank-source-direction">Chiều tiền</label><select id="bank-source-direction" value={sourceDirection} onChange={e => setSourceDirection(e.target.value)}>
-          <option value="ALL">Tất cả</option><option value="IN">Tiền vào</option><option value="OUT">Tiền ra</option></select></div>
-        <div className="field"><label htmlFor="bank-source-status">Trạng thái xử lý</label><select id="bank-source-status" value={sourceStatus} onChange={e => setSourceStatus(e.target.value)}>
-          <option value="ALL">Tất cả</option>{["REVIEW_REQUIRED", "LINKED", "IGNORED", "STAGED", "RESOLVING"].map(status => <option key={status} value={status}>{status}</option>)}</select></div>
-      </div>}
-      {!sources.length ? <p>Chưa có giao dịch từ sao kê.</p> : !visibleSources.length ? <p>Không có dòng phù hợp trong 50 dòng gần nhất.</p> :
-        <div className="table-wrap"><table><thead><tr><th>Thời gian</th><th>Nguồn</th><th>Diễn giải</th><th>Số tiền</th><th>Trạng thái</th><th>Chi tiết</th></tr></thead><tbody>
-          {visibleSources.map(s => <Fragment key={s.id}><tr><td>{formatDate(s.occurredAt)}</td><td>{s.providerCode} · {s.accountMasked}</td><td>{s.description}</td>
-            <td>{formatMoney(s.amount, s.direction)}</td><td>{s.processingStatus} · {s.bookingStatus}{s.linkedIds.length > 0 && <> · <a href={`/transactions?transactionId=${s.linkedIds[0]}`}>Xem sổ cái</a></>}</td>
-            <td><button type="button" className="button button-outline" aria-expanded={expandedSourceId === s.id} onClick={() => setExpandedSourceId(expandedSourceId === s.id ? null : s.id)}>{expandedSourceId === s.id ? "Thu gọn" : "Xem nguồn"}</button></td></tr>
-            {expandedSourceId === s.id && <tr><td colSpan={6}><div className="section-subtitle" role="region" aria-label={`Thông tin nguồn ${s.id}`}>
-              <p>Mã nguồn: {s.id} · Mã tham chiếu: {s.bankReference || "Không có"} · Phiên bản: {s.sourceVersion}</p>
-              <p>Nhận lúc: {formatDate(s.receivedAt)} · Sự kiện gốc: {s.rawEventId || "Không có"}</p>
-              <p>Giao dịch sổ cái: {s.linkedIds.length ? s.linkedIds.join(", ") : "Chưa liên kết"}</p>
-            </div></td></tr>}
+
+    <section className={styles.recordsSection} aria-labelledby="reviews-heading"><div className={styles.sectionHeading}><div><span className={styles.eyebrow}>ĐỐI SOÁT GIAO DỊCH</span><h2 id="reviews-heading">Cần xác nhận <span>{reviews.length}</span></h2><p>Xem xét giao dịch ngân hàng trước khi đưa vào sổ thu chi.</p></div></div>
+      {!reviews.length ? <div className={styles.emptyState}><CheckCircle2 size={28} /><strong>Không có giao dịch chờ xác nhận</strong><p>Những dòng sao kê đã nhập sẽ xuất hiện ở đây sau khi hệ thống xử lý.</p></div> : <div className={styles.reviewList}>{reviews.map(r => <ReviewCard key={r.id} item={r} wallets={wallets} categories={categories} transactions={transactions} />)}</div>}
+    </section>
+
+    <section className={`${styles.sourcePanel} card`} aria-labelledby="history-heading"><div className={styles.sectionHeading}><div><span className={styles.eyebrow}>NHẬT KÝ ĐỒNG BỘ</span><h2 id="history-heading">Lịch sử sao kê <span>{sources.length}</span></h2><p>Tra cứu tối đa 50 dòng gần nhất cùng thông tin nguồn gốc để đối chiếu.</p></div></div>
+      {sources.length > 0 && <div className={styles.filters}><div className="field"><label htmlFor="bank-source-query">Tìm giao dịch</label><div className={styles.searchField}><Search size={17} /><input id="bank-source-query" value={sourceQuery} onChange={e => setSourceQuery(e.target.value)} placeholder="Diễn giải, tài khoản, mã tham chiếu..." /></div></div>
+        <div className="field"><label htmlFor="bank-source-direction">Chiều tiền</label><select id="bank-source-direction" value={sourceDirection} onChange={e => setSourceDirection(e.target.value)}><option value="ALL">Tất cả</option><option value="IN">Tiền vào</option><option value="OUT">Tiền ra</option></select></div>
+        <div className="field"><label htmlFor="bank-source-status">Trạng thái</label><select id="bank-source-status" value={sourceStatus} onChange={e => setSourceStatus(e.target.value)}><option value="ALL">Tất cả</option>{["REVIEW_REQUIRED", "LINKED", "IGNORED", "STAGED", "RESOLVING"].map(status => <option key={status} value={status}>{sourceStatusLabel(status)}</option>)}</select></div></div>}
+      {!sources.length ? <div className={styles.emptyState}><FileSpreadsheet size={28} /><strong>Chưa có giao dịch từ sao kê</strong><p>Dữ liệu sẽ hiển thị sau khi bạn tải lên tệp hoặc đồng bộ ngân hàng.</p></div> : !visibleSources.length ? <div className={styles.emptyState}><Search size={26} /><strong>Không tìm thấy giao dịch</strong><p>Thử thay đổi từ khóa hoặc bộ lọc để xem các dòng khác.</p></div> :
+        <div className={styles.tableScroll}><table className={styles.sourceTable}><thead><tr><th>Thời gian</th><th>Nguồn</th><th>Diễn giải</th><th>Số tiền</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+          {visibleSources.map(s => <Fragment key={s.id}><tr><td className={styles.dateCell}>{formatDate(s.occurredAt)}</td><td><strong>{s.providerCode === "SEPAY_BANKHUB" ? "SePay" : s.providerCode}</strong><small>{s.accountMasked}</small></td><td className={styles.descriptionCell}>{s.description || "Không có diễn giải"}</td>
+            <td className={`${styles.amountCell} ${s.direction === "IN" ? styles.incomeText : styles.expenseText}`}>{formatMoney(s.amount, s.direction)}</td><td><span className={s.processingStatus === "LINKED" ? styles.statusSuccess : styles.statusNeutral}>{sourceStatusLabel(s.processingStatus)}</span><small>{bookingStatusLabel(s.bookingStatus)}{s.linkedIds.length > 0 && <> · <a href={`/transactions?transactionId=${s.linkedIds[0]}`}>Xem sổ cái</a></>}</small></td>
+            <td><button type="button" className={styles.detailButton} aria-label={`${expandedSourceId === s.id ? "Thu gọn" : "Xem nguồn"} giao dịch ${s.id}`} aria-expanded={expandedSourceId === s.id} onClick={() => setExpandedSourceId(expandedSourceId === s.id ? null : s.id)}>Chi tiết <ChevronDown size={15} className={expandedSourceId === s.id ? styles.rotated : ""} /></button></td></tr>
+            {expandedSourceId === s.id && <tr><td colSpan={6}><div className={styles.sourceDetails} role="region" aria-label={`Thông tin nguồn ${s.id}`}><p><strong>Mã nguồn:</strong> {s.id}</p><p><strong>Mã tham chiếu:</strong> {s.bankReference || "Không có"} · <strong>Phiên bản:</strong> {s.sourceVersion}</p><p><strong>Nhận lúc:</strong> {formatDate(s.receivedAt)} · <strong>Sự kiện gốc:</strong> {s.rawEventId || "Không có"}</p><p><strong>Giao dịch sổ cái:</strong> {s.linkedIds.length ? s.linkedIds.join(", ") : "Chưa liên kết"}</p></div></td></tr>}
           </Fragment>)}
-        </tbody></table></div>}</section>
-  </>;
+        </tbody></table></div>}
+    </section>
+  </div>;
 }
