@@ -26,7 +26,7 @@
   background: #fff; border-color: #e4ecf6; box-shadow: 0 3px 11px rgb(24 58 117 / 5%);
 }
 .sidebar-logo-full { display: inline-flex; justify-content: center; align-items: center; }
-.sidebar-logo-mark { display: none; }
+.app-brand-plaque .sidebar-logo-mark { display: none; }
 .sidebar nav[aria-label="Điều hướng chính"] {
   flex: 0 1 auto; min-height: 0; padding: 0 3px 12px 0;
   overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin;
@@ -148,7 +148,7 @@
   .sidebar-brand::after { left: 13px; bottom: 9px; width: 26px; }
   .sidebar-brand .app-brand-plaque { display: grid; place-items: center; width: 54px; min-height: 49px; padding: 5px; border-radius: 12px; }
   .sidebar-logo-full { display: none; }
-  .sidebar-logo-mark { display: block; width: 39px; height: 39px; object-fit: contain; }
+  .app-brand-plaque .sidebar-logo-mark { display: block; width: 39px; height: 39px; object-fit: contain; }
   .sidebar nav[aria-label="Điều hướng chính"] { width: 100%; padding: 0; }
   .sidebar .nav-caption { height: 12px; font-size: 0; padding: 0; }
   .nav-sections { gap: 5px; }
