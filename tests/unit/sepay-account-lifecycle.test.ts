@@ -31,7 +31,8 @@ describe("SePay account ownership and unlink state", () => {
     mocks.account.mockResolvedValue({ providerAccountRef: "bank-A" });
     mocks.linkedAccounts.mockResolvedValue([{ id: "account-A", providerAccountRef: "bank-A" },
       { id: "account-B", providerAccountRef: "bank-B" }]);
-    mocks.listRemote.mockResolvedValue([{ xid: "bank-A", active: "0" }, { xid: "bank-B", active: "1" }]);
+    mocks.listRemote.mockResolvedValue([{ xid: "bank-A", company_xid: "company-A", active: "0" },
+      { xid: "bank-B", company_xid: "company-A", active: "1" }]);
     mocks.hostedLink.mockResolvedValue({ hostedLinkUrl: "https://bankhub.sepay.vn/link/unlink", expiresAt: "2026-10-22 20:00:00" });
     mocks.deactivate.mockResolvedValue({ count: 1 });
     mocks.activeCount.mockResolvedValue(1);
@@ -69,13 +70,21 @@ describe("SePay account ownership and unlink state", () => {
   });
 
   it("keeps unknown provider statuses untouched and pauses once all accounts are inactive", async () => {
-    mocks.listRemote.mockResolvedValueOnce([{ xid: "bank-A", active: null }]);
+    mocks.listRemote.mockResolvedValueOnce([{ xid: "bank-A", company_xid: "company-A", active: null }]);
     mocks.activeCount.mockResolvedValueOnce(2);
     expect(await refreshSePayAccountStatuses(context, "connection-A")).toEqual({ deactivated: 0, active: 2 });
     expect(mocks.deactivate).not.toHaveBeenCalled();
-    mocks.listRemote.mockResolvedValueOnce([{ xid: "bank-A", active: "0" }, { xid: "bank-B", active: "0" }]);
+    mocks.listRemote.mockResolvedValueOnce([{ xid: "bank-A", company_xid: "company-A", active: "0" },
+      { xid: "bank-B", company_xid: "company-A", active: "0" }]);
     mocks.activeCount.mockResolvedValueOnce(0);
     expect(await refreshSePayAccountStatuses(context, "connection-A")).toEqual({ deactivated: 2, active: 0 });
     expect(mocks.pause).toHaveBeenCalledWith({ where: { id: "connection-A" }, data: { status: "PAUSED" } });
+  });
+
+  it("does not deactivate local mappings when the provider mixes companies", async () => {
+    mocks.listRemote.mockResolvedValueOnce([{ xid: "bank-A", company_xid: "company-B", active: "0" }]);
+    await expect(refreshSePayAccountStatuses(context, "connection-A")).rejects.toMatchObject({ code: "SEPAY_TENANT_MISMATCH" });
+    expect(mocks.deactivate).not.toHaveBeenCalled();
+    expect(mocks.revokeConsent).not.toHaveBeenCalled();
   });
 });

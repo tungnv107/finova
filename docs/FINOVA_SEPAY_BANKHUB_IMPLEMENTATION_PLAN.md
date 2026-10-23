@@ -1,6 +1,6 @@
 # Finova — Kế hoạch triển khai SePay Bank Hub Open API
 
-**Ngày:** 22/10/2026 · **Mức sẵn sàng:** DEV/fixture, **NO-GO production**. **6 nhiệm vụ đã nghiệm thu bằng tài liệu/unit/lint/build; các nhiệm vụ cần DB/SePay vẫn mở.**  
+**Ngày cập nhật:** 23/10/2026 · **Mức sẵn sàng:** DEV/fixture + PostgreSQL integration, **NO-GO production**. **13 nhiệm vụ đã nghiệm thu**; các bước cần SePay UAT/staging/legal vẫn mở.
 **Phụ thuộc:** [Đặc tả gốc](FINOVA_DONG_BO_SAO_KE_NGAN_HANG_DESIGN.md), [Bank Sync tracker](FINOVA_BANK_SYNC_IMPLEMENTATION_PLAN.md), [Runbook](FINOVA_BANK_SYNC_RUNBOOK.md).  
 **Quy ước:** `[x]` chỉ dùng khi code/tài liệu đã có và kiểm chứng tương ứng đạt; `[ ]` gồm đang làm, thiếu kiểm thử, cần thông tin đối tác hoặc UAT. Không coi unit mock là tích hợp thật.
 
@@ -48,7 +48,7 @@ Nguồn: https://developer.sepay.vn/vi/bankhub/tong-quan ; https://developer.sep
 |---|---|---|
 | [x] | SP1-01 | `sepay/client.ts`: fixed host, Basic token, Bearer, cache TTL, re-auth 401, timeout, lỗi an toàn; unit mock đạt. |
 | [x] | SP1-02 | `sepay/mapper.ts`: Zod payload IPN/history, ngày +07, VND nguyên, credit/debit, `transaction_id`; test malformed/negative/timestamp đạt. |
-| [ ] | SP1-03 | Tenant-scoped company and bank-account listing; thêm unit/DB integration cho sai company ID, concurrent claims và pagination lỗi. |
+| [x] | SP1-03 | Tenant-scoped company/account listing, masking và xác minh company ID; unit negative pagination/malformed/429/503, PostgreSQL kiểm tra workspace A/B, sai company ID và concurrent wallet claims. |
 | [ ] | SP1-04 | Company creation và Hosted Link thật; mock contract đã viết nhưng cần credential sandbox và kiểm thử liên kết. |
 | [ ] | SP1-05 | Migrations/deploy staging, FK, account-wallet unique, event idempotency, encrypted raw evidence; cần DB-backed E2E. |
 
@@ -66,18 +66,18 @@ Nguồn: https://developer.sepay.vn/vi/bankhub/tong-quan ; https://developer.sep
 
 | Xong | Task | Nội dung / điều kiện nghiệm thu |
 |---|---|---|
-| [ ] | SP3-01 | Query lịch sử có lọc account/company, 50 rows/page, 20 trang và tối đa 31 ngày; mock tests đạt nhưng cần DB end-to-end. |
-| [ ] | SP3-02 | Manual sync route với workspace auth/CSRF, job, `lastSyncedAt` chỉ sau success; cần test API route, DB failure và race. |
+| [x] | SP3-01 | Query lịch sử tenant/account-scoped, 50 rows/page, tối đa 20 trang/lần và 31 ngày; unit bounds/marker, PostgreSQL 2 trang, overlap dedup và review-first PASS. |
+| [x] | SP3-02 | Manual sync route dùng Better Auth signed session và Origin guard thực; 36/36 PostgreSQL integration PASS, trong đó 5 tình huống HTTP authenticated kiểm tra 401/403, cookie sai, cross-workspace 404, job/watermark, sync lặp idempotent, thu hồi consent 409 và REVIEW_FIRST. Unit route 6/6 PASS. Google OAuth browser E2E vẫn thuộc UAT/SP5-03, không được suy diễn từ synthetic session. |
 | [ ] | SP3-03 | Đồng bộ tăng dần tự động (cron) có overlap và endpoint nội bộ; code đã viết, cần scheduler thực và DB replay/gap detection trước nghiệm thu. |
 | [ ] | SP3-04 | Backfill nhiều tháng với cửa sổ nhỏ, resume/cursor, kiểm tra tổng số trang, thứ tự thời gian và job metrics. |
-| [ ] | SP3-05 | Stress pagination, 429/5xx/token expired, timeout giữa các trang, recovery không double-post. |
+| [x] | SP3-05 | PostgreSQL synthetic integration PASS: 20 trang × 10 dòng, replay 200 dòng, 429/503/timeout trang 2, token 401 refresh và 401 lặp, giới hạn 21 trang, recovery không double-post; **không thay thế SePay Sandbox UAT thật** (SP5-03). |
 
 ### SP4 — IPN realtime, dedupe, ledger
 
 | Xong | Task | Nội dung / điều kiện nghiệm thu |
 |---|---|---|
-| [ ] | SP4-01 | IPN authenticated, bounded raw payload, mapped account, durable inbox before `success:true`; route code đã viết, thiếu DB-backed E2E. |
-| [ ] | SP4-02 | SePay IPN redelivery, IPN+poll cùng transaction ID, concurrent deliveries; test DB và 2 workers. |
+| [x] | SP4-01 | IPN authenticated, bounded raw payload, mapped account, durable inbox before `success:true`; HTTP IPN synthetic + PostgreSQL integration PASS, wrong auth/malformed/revoked bị từ chối, encrypted event/outbox commit trước ACK. Chưa có IPN do SePay thật phát. |
+| [x] | SP4-02 | SePay IPN redelivery, IPN+poll cùng transaction ID, concurrent deliveries; PostgreSQL test 8 webhook đồng thời, 2 workers, duplicate IPN HTTP, canonical IPN/history dedupe PASS. |
 | [ ] | SP4-03 | Encrypted audit raw, reject wrong auth/cross-tenant, không log bearer/key/PII; security integration. |
 | [ ] | SP4-04 | Review-first và ledger invariant, transfer hai chiều, stale status/reversal, cutover, idempotent posting; financial regression DB. |
 | [ ] | SP4-05 | Event-webhook riêng cho unlink/reactivate, xác thực theo phương thức SePay cấp; cần tài liệu payload auth + E2E. |
@@ -86,8 +86,8 @@ Nguồn: https://developer.sepay.vn/vi/bankhub/tong-quan ; https://developer.sep
 
 | Xong | Task | Nội dung / điều kiện nghiệm thu |
 |---|---|---|
-| [x] | SP5-01 | Typecheck, lint, unit suite toàn dự án và production build PASS: 50/50 files, 310/310 tests (22/10/2026). |
-| [ ] | SP5-02 | Prisma migrations apply, integration PostgreSQL, giữ dữ liệu thật không reset; có log bằng chứng. |
+| [x] | SP5-01 | Typecheck, lint, unit suite PASS: 51/51 files, 320/320 tests; production build PASS với dist riêng (23/10/2026). |
+| [x] | SP5-02 | Prisma migrations apply và integration PostgreSQL riêng; `finova_test` 16/16 migrations, 31/31 Bank Sync scenarios PASS, fixture cleanup. DB ứng dụng đã backup/apply 15 migrations ở checkpoint trước; staging thuộc SP5-05. |
 | [ ] | SP5-03 | UAT sandbox Hosted Link với tài khoản test hợp lệ, IPN thực, lịch sử phân trang, user flow responsive. |
 | [ ] | SP5-04 | Security audit, secret management, consent, tenant A/B, production build và backup/restore drill. |
 | [ ] | SP5-05 | Staging đối tác/pháp chế ký duyệt, production flag riêng, rollout/rollback có giám sát; chỉ bật Live sau GO. |
@@ -108,11 +108,21 @@ Nguồn: https://developer.sepay.vn/vi/bankhub/tong-quan ; https://developer.sep
 
 ## 5. Kiểm thử, điều kiện phát hành
 
-**Đã chạy trên máy phát triển (22/10/2026):** `npm test` **310/310 PASS (50/50 files)**; `npm run typecheck` **PASS**; `npm run lint` **PASS**; `npx prisma validate` **PASS**; `npm run build` **PASS**, bao gồm routes `/sepay/{unlink,refresh}`. Test SePay bổ sung kiểm tra quyền sở hữu tài khoản, Hosted Link hủy, chỉ vô hiệu hóa khi `active=0`, tạm dừng khi không còn tài khoản. `npx prisma migrate status`: **FAIL**, Prisma báo `Schema engine error` với datasource `127.0.0.1:55433`, không xác nhận được DB/migration. Chưa chạy `migrate deploy` và không sử dụng tài khoản SePay thật.
+**Checkpoint hiện hành 23/10/2026 — signed-session manual sync:** PostgreSQL `finova_test` **36/36 PASS** (5 kiểm tra authenticated API route mới), 16/16 migrations; unit **320/320** (51 files), typecheck, lint, Prisma validate, guard audit 54/69 và production build (41/41 static pages) PASS. Đã xác minh cleanup: 0 fixture workspace, 0 fixture user, 0 pending outbox. Đóng **SP3-02 [x]**, tổng **13 nhiệm vụ SePay [x]**; Bank Sync giữ **9/45 [x]**. Synthetic Better Auth session và SePay HTTP mock chỉ chứng nhận route/API, **chưa chứng nhận Google OAuth browser hay SePay UAT thật**. Dependency audit inconclusive do npm audit không trả báo cáo đầy đủ; một lượt stress khi kiểm thử đồng thời phát sinh 1 outbox retry, sau đó lượt độc lập PASS 36/36, cần giám sát độ ổn định dưới tải. **Production/SePay Live NO-GO.**
 
-Tránh đánh dấu SP5-02/03 nếu chỉ chạy mock. Bằng chứng typecheck/build không thay thế được kiểm thử DB, consent thật, hoặc UAT.
+**Checkpoint bổ sung 23/10/2026 (lịch sử):** Unit **320/320 (51 files)**, SePay Manual Sync Route **6/6** (trong unit); PostgreSQL `finova_test` **31/31** Bank Sync scenarios PASS, **16/16** Prisma migrations. Bổ sung job lease/takeover, consent theo từng tài khoản, thu hồi consent trong HTTP, 401 lặp, 21-page limit và stress 200 giao dịch; typecheck, lint, Prisma validate PASS. **SP3-05 [x]**, tổng **12 task SePay [x]**. HTTP SePay trong integration là giả lập; SP3-02 vẫn chờ authenticated route E2E, SP5-03/04/05 chờ UAT/staging/sign-off. **Production/SePay Live NO-GO.**
 
-**Môi trường hiện tại:** PostgreSQL `127.0.0.1:55433` vẫn chưa xác nhận được migration (`Schema engine error` hiện tại); Docker Desktop từng có lỗi permission. Production build lần này **đã thành công**, lỗi `EPERM` từ lần trước không còn tái hiện. **Không dùng migrate reset** trên DB hiện có.
+**Checkpoint trước đó (lưu lịch sử):**
+
+**Checkpoint 23/10/2026:** Unit **314/314 (50 files)**; PostgreSQL Bank Sync integration **24/24** trên `finova_test`, trong đó có tenant/company ownership, concurrent attach, lịch sử 2 trang, overlap, 429, lỗi 503/timeout giữa trang, recovery và ledger không ghi sổ trùng. `typecheck`, `lint`, `prisma validate`, route audit **54 files/69 handlers** và production build PASS ở checkpoint kiểm tra gần nhất. **SP1-03/SP3-01 [x]**, tổng SePay **11 task [x]**. Đây là bằng chứng tích hợp DB thật với HTTP SePay giả lập; Hosted Link/IPN/history do SePay Sandbox thật phát và nghiệm thu vận hành chưa có. SP3-05, SP5-03/04/05 vẫn mở.
+
+**Checkpoint lịch sử 22/10/2026 (giữ nguyên):**
+
+**Đã chạy trên máy phát triển (22/10/2026):** `npm test` **310/310 PASS (50/50 files)**; `npm run typecheck`, `npm run lint`, `npx prisma validate`, `npm run build` **PASS**, bao gồm routes `/sepay/{unlink,refresh}`. `npm run security:routes` **54 route files/69 handlers PASS**. `npm run security:audit` PASS: production dependency 0 findings; 5 dev-only nodes theo dõi có hạn. PostgreSQL `finova_test` đã có **15/15 migrations**, `npm run test:bank-sync:integration` **13/13 PASS** trên DB thật (fixture synthetic, cleanup), gồm HTTP SePay IPN authenticated/ACK after durable persistence và concurrency/retry. Chưa sử dụng tài khoản SePay thật.
+
+SP5-02 đã có bằng chứng PostgreSQL thật. SP5-03 giữ mở vì synthetic HTTP IPN không tương đương IPN/Hosted Link/history do SePay Sandbox gửi.
+
+**Môi trường hiện tại:** Container `finova-db-1` PostgreSQL 17 healthy, cổng `127.0.0.1:55433`; chạy lệnh trong sandbox thường bị từ chối Docker/TCP, kiểm thử DB thành công qua quyền phù hợp. Windows production build PASS khi chạy với quyền tương ứng. **Không dùng migrate reset** trên DB hiện có.
 
 **GO/NO-GO:** Live là **NO-GO** cho đến khi có merchant credentials, IPN key do SePay cấp, cấu hình IPN public HTTPS, consent/coverage xác thực và đủ toàn bộ SP5. App mặc định `FINOVA_SEPAY_BANKHUB_ENABLED=0`, `FINOVA_SEPAY_BANKHUB_ENV=sandbox`.
 
@@ -125,6 +135,12 @@ Tránh đánh dấu SP5-02/03 nếu chỉ chạy mock. Bằng chứng typecheck/
 - [x] Tạo backup trước migration và áp dụng thành công `20261022145000_bank_sync_foundation`, `20261022153000_bank_sync_integrity`; `prisma migrate status` cho biết 15/15 migrations đã áp dụng. Backup lưu tại `artifacts/backups/` cục bộ; không đưa vào Git.
 - [x] Unit SePay liên quan: 4 files / 17 tests PASS; `prisma validate` PASS; `docker compose config --quiet` PASS.
 - [ ] Chưa có **IPN Apikey Bank Hub**; khóa SePay **API Access v1/v2** khác IPN, không được nhập thay. Cần SePay cấp khóa IPN và xác nhận HTTPS callback.
-- [ ] Chưa hoàn thành user-authenticated Hosted Link UAT, IPN và history end-to-end bằng Sandbox với workspace thật. SP5-02 vẫn mở tới khi có kiểm thử PostgreSQL integration; SP5-03 vẫn mở tới khi UAT thực tế.
+- [ ] Chưa hoàn thành user-authenticated Hosted Link UAT, IPN và history end-to-end bằng Sandbox với workspace thật. **SP5-02 đã đạt PostgreSQL integration synthetic; SP5-03 vẫn mở** tới khi UAT đối tác thực tế.
+
+### Checkpoint bổ sung: PostgreSQL/HTTP synthetic IPN (22/10/2026)
+
+- Bổ sung `scripts/bank-sync-integration-check.ts` và fixture cleanup an toàn, chỉ sử dụng `finova_test`; **13/13 PASS**, gồm HTTP IPN với khóa thử nghiệm, encrypted raw event, durable outbox, redelivery, cross-workspace/revoked consent, worker lease/DLQ, stale status và transfer ledger cân bằng.
+- Migrations 15/15 đã apply; production build/typecheck/lint/310 unit tests/schema/route audit đều PASS; security audit runtime 0, theo dõi 5 dev-only nodes. Không đưa API key/IPN key vào Git hoặc tài liệu.
+- Các mục SP1-05 (deploy staging), SP4-03/04 (security/full financial regression), SP5-03/04/05 (real UAT, review, release) vẫn **[ ]** đến khi vượt toàn bộ tiêu chí, kể cả pháp chế và môi trường HTTPS.
 
 **Cảnh báo vận hành:** Việc bật sandbox ở môi trường phát triển **không cho phép Production** và không chứng minh khả năng đọc tài khoản ngân hàng thật. Các khóa đã đưa qua kênh trao đổi nên cân nhắc cấp lại trước khi triển khai public; tuyệt đối không sao chép credential vào tài liệu, frontend hoặc logs.

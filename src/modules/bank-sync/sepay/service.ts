@@ -4,12 +4,13 @@ import { prisma } from "@/lib/db";
 import { HttpError, type UserContext } from "@/server/context";
 import { serializable } from "@/server/serializable";
 import { providerCapabilities } from "../domain";
-import { persistBankEnvelope } from "../service";
+import { bankConsentAllowsAccount, persistBankEnvelope } from "../service";
 import { mapSePayHistory } from "./mapper";
 import { sepayClientFromEnvironment, sepayEnabled, sepayEnvironment } from "./client";
 
 const date = z.iso.date();
 const connectionSelect = { id: true, workspaceId: true, providerConnectionRef: true, status: true } as const;
+const HISTORY_LEASE_MS = 5 * 60_000;
 
 async function scopedConnection(context: UserContext, id: string) {
   const connection = await prisma.bankConnection.findFirst({ where: { id, workspaceId: context.workspaceId,
@@ -48,6 +49,9 @@ export async function startSePayLink(context: UserContext) {
 export async function availableSePayAccounts(context: UserContext, connectionId: string) {
   const connection = await scopedConnection(context, connectionId);
   const accounts = await sepayClientFromEnvironment().listAccounts(connection.providerConnectionRef!);
+  if (accounts.some(account => account.company_xid !== connection.providerConnectionRef)) {
+    throw new HttpError(502, "SEPAY_TENANT_MISMATCH", "SePay trả về tài khoản sai công ty.");
+  }
   return accounts.filter(a => a.active === undefined || a.active === null || a.active === "1" || a.active === 1 || a.active === true)
     .map(a => ({ xid: a.xid, bankCode: a.bank_code ?? a.brand_name ?? "BANK",
       accountMasked: `•••• ${a.account_number.slice(-4)}` }));
@@ -57,7 +61,11 @@ export async function attachSePayAccount(context: UserContext, connectionId: str
   acceptedConsent: boolean) {
   if (!acceptedConsent) throw new HttpError(422, "CONSENT_REQUIRED", "Cần đồng ý quyền đồng bộ sao kê.");
   const connection = await scopedConnection(context, connectionId);
-  const bank = (await sepayClientFromEnvironment().listAccounts(connection.providerConnectionRef!)).find(a => a.xid === accountXid);
+  const remoteAccounts = await sepayClientFromEnvironment().listAccounts(connection.providerConnectionRef!);
+  if (remoteAccounts.some(account => account.company_xid !== connection.providerConnectionRef)) {
+    throw new HttpError(502, "SEPAY_TENANT_MISMATCH", "SePay trả về tài khoản sai công ty.");
+  }
+  const bank = remoteAccounts.find(a => a.xid === accountXid);
   if (!bank || (bank.active != null && !["1", 1, true].includes(bank.active))) {
     throw new HttpError(422, "BANK_NOT_LINKED", "Tài khoản chưa được liên kết và kích hoạt trên SePay.");
   }
@@ -108,6 +116,9 @@ export async function startSePayUnlink(context: UserContext, connectionId: strin
 export async function refreshSePayAccountStatuses(context: UserContext, connectionId: string) {
   const connection = await scopedConnection(context, connectionId);
   const remote = await sepayClientFromEnvironment().listAccounts(connection.providerConnectionRef!);
+  if (remote.some(account => account.company_xid !== connection.providerConnectionRef)) {
+    throw new HttpError(502, "SEPAY_TENANT_MISMATCH", "SePay trả về tài khoản sai công ty.");
+  }
   const activeByRef = new Map(remote.map(a => [a.xid, a.active]));
   return serializable(async db => {
     const current = await db.bankConnection.findFirst({ where: { id: connectionId, workspaceId: context.workspaceId,
@@ -145,17 +156,72 @@ export async function syncSePayHistory(context: UserContext, connectionId: strin
   const connection = await scopedConnection(context, connectionId);
   if (connection.status !== "ACTIVE") throw new HttpError(409, "CONNECTION_PAUSED", "Kết nối đang tạm dừng.");
   const accounts = await prisma.bankAccount.findMany({ where: { workspaceId: context.workspaceId, connectionId, status: "ACTIVE",
-    walletId: { not: null } }, select: { providerAccountRef: true } });
+    walletId: { not: null } }, select: { providerAccountRef: true, walletId: true } });
   if (!accounts.length) throw new HttpError(422, "NO_BANK_ACCOUNTS", "Chưa gắn tài khoản với ví.");
+  // Validate every account captured for this run. A consent on another account
+  // must never authorize ingestion or advance the shared connection watermark.
+  function accountsAuthorized(current: {
+    accounts: { providerAccountRef: string; walletId: string | null }[];
+    consents: { scopeJson: unknown }[];
+  }) {
+    return current.accounts.length === accounts.length && accounts.every(account =>
+      current.accounts.some(row => row.providerAccountRef === account.providerAccountRef && row.walletId === account.walletId) &&
+      bankConsentAllowsAccount(current.consents, "SEPAY_BANKHUB", account.providerAccountRef));
+  }
   const client = sepayClientFromEnvironment();
-  const job = await prisma.bankSyncJob.create({ data: { workspaceId: context.workspaceId, connectionId,
-    type: "SEPAY_HISTORY", status: "RUNNING", fromAt: new Date(start), toAt: new Date(end), startedAt: new Date() } });
+  // A serializable claim prevents manual sync and cron from owning the same
+  // connection concurrently. Reclaim expired jobs after a worker crash.
+  const job = await serializable(async db => {
+    const now = new Date();
+    const current = await db.bankConnection.findFirst({ where: { id: connectionId, workspaceId: context.workspaceId,
+      status: "ACTIVE", OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gt: now } }],
+      consents: { some: { revokedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } } },
+      select: { id: true, accounts: { where: { status: "ACTIVE", walletId: { not: null } },
+        select: { providerAccountRef: true, walletId: true } },
+        consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+          select: { scopeJson: true } } } });
+    if (!current || !accountsAuthorized(current)) throw new HttpError(409, "CONNECTION_INACTIVE", "Kết nối hoặc quyền đồng bộ đã hết hiệu lực.");
+    const running = await db.bankSyncJob.findMany({ where: { workspaceId: context.workspaceId, connectionId,
+      type: "SEPAY_HISTORY", status: "RUNNING" }, select: { id: true, leaseUntil: true } });
+    if (running.some(item => item.leaseUntil && item.leaseUntil > now)) {
+      throw new HttpError(409, "SYNC_ALREADY_RUNNING", "Đang có lượt đồng bộ sao kê cho kết nối này.");
+    }
+    await db.bankSyncJob.updateMany({ where: { workspaceId: context.workspaceId, connectionId,
+      type: "SEPAY_HISTORY", status: "RUNNING", OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }] },
+    data: { status: "FAILED", failureReason: "SYNC_LEASE_EXPIRED", endedAt: now, leaseUntil: null } });
+    return db.bankSyncJob.create({ data: { workspaceId: context.workspaceId, connectionId,
+      type: "SEPAY_HISTORY", status: "RUNNING", fromAt: new Date(start), toAt: new Date(end),
+      startedAt: now, leaseUntil: new Date(now.getTime() + HISTORY_LEASE_MS) } });
+  });
+  // A lease is checked after external I/O as well as during row ingestion.
+  // An old worker cannot complete after a replacement claims its expired job.
+  async function heartbeat() {
+    await serializable(async db => {
+      const now = new Date();
+      const connection = await db.bankConnection.findFirst({ where: { id: connectionId, workspaceId: context.workspaceId,
+        status: "ACTIVE", OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gt: now } }],
+        consents: { some: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } } },
+        select: { id: true, accounts: { where: { status: "ACTIVE", walletId: { not: null } },
+          select: { providerAccountRef: true, walletId: true } },
+          consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+            select: { scopeJson: true } } } });
+      if (!connection || !accountsAuthorized(connection)) throw new HttpError(409, "CONNECTION_INACTIVE", "Kết nối hoặc quyền đồng bộ đã hết hiệu lực.");
+      const updated = await db.bankSyncJob.updateMany({ where: { id: job.id, workspaceId: context.workspaceId,
+        connectionId, status: "RUNNING", leaseUntil: { gt: now } },
+      data: { leaseUntil: new Date(now.getTime() + HISTORY_LEASE_MS) } });
+      if (updated.count !== 1) throw new HttpError(409, "SYNC_LEASE_LOST", "Lượt đồng bộ đã hết hạn hoặc được tiếp quản.");
+    });
+  }
   let accepted = 0, duplicates = 0;
   try {
     for (const account of accounts) {
       for (let page = 1; page <= 20; page++) {
+        await heartbeat();
         const result = await client.historyPage(connection.providerConnectionRef!, account.providerAccountRef, from, to, page);
-        for (const row of result.data) {
+        await heartbeat();
+        for (const [index, row] of result.data.entries()) {
+          if (index > 0 && index % 10 === 0) await heartbeat();
           const envelope = mapSePayHistory(row);
           const original = Buffer.from(JSON.stringify(row));
           const canonical = Buffer.from(JSON.stringify(envelope));
@@ -166,12 +232,31 @@ export async function syncSePayHistory(context: UserContext, connectionId: strin
         if (page === 20) throw new HttpError(503, "SEPAY_PAGINATION_LIMIT", "Đồng bộ cần chia thành khoảng ngày nhỏ hơn.");
       }
     }
-    await prisma.bankSyncJob.update({ where: { id: job.id }, data: { status: "DONE", endedAt: new Date(), metricsJson: { accepted, duplicates } } });
-    await prisma.bankConnection.update({ where: { id: connectionId }, data: { lastSyncedAt: new Date(), errorCode: null } });
+    await serializable(async db => {
+      const now = new Date();
+      const current = await db.bankConnection.findFirst({ where: { id: connectionId, workspaceId: context.workspaceId,
+        status: "ACTIVE", OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gt: now } }] },
+      select: { accounts: { where: { status: "ACTIVE", walletId: { not: null } },
+        select: { providerAccountRef: true, walletId: true } },
+        consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+          select: { scopeJson: true } } } });
+      if (!current || !accountsAuthorized(current)) throw new HttpError(409, "CONNECTION_INACTIVE", "Kết nối hoặc quyền đồng bộ đã hết hiệu lực.");
+      const completed = await db.bankSyncJob.updateMany({ where: { id: job.id, workspaceId: context.workspaceId,
+        connectionId, status: "RUNNING", leaseUntil: { gt: now } },
+      data: { status: "DONE", endedAt: now, leaseUntil: null, metricsJson: { accepted, duplicates } } });
+      if (completed.count !== 1) throw new HttpError(409, "SYNC_LEASE_LOST", "Lượt đồng bộ đã hết hạn hoặc được tiếp quản.");
+      const advanced = await db.bankConnection.updateMany({ where: { id: connectionId, workspaceId: context.workspaceId,
+        status: "ACTIVE", OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gt: now } }],
+        consents: { some: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } },
+        accounts: { some: { status: "ACTIVE", walletId: { not: null } } } },
+      data: { lastSyncedAt: now, errorCode: null } });
+      if (advanced.count !== 1) throw new HttpError(409, "CONNECTION_INACTIVE", "Kết nối hoặc quyền đồng bộ đã hết hiệu lực.");
+    });
     return { accepted, duplicates, jobId: job.id, note: "Giao dịch đã được xếp hàng để duyệt, chưa ghi sổ." };
   } catch (error) {
-    await prisma.bankSyncJob.update({ where: { id: job.id }, data: { status: "FAILED", endedAt: new Date(),
-      failureReason: error instanceof HttpError ? error.code : "SYNC_FAILED", metricsJson: { accepted, duplicates } } });
+    await prisma.bankSyncJob.updateMany({ where: { id: job.id, status: "RUNNING" }, data: { status: "FAILED",
+      endedAt: new Date(), leaseUntil: null, failureReason: error instanceof HttpError ? error.code : "SYNC_FAILED",
+      metricsJson: { accepted, duplicates } } }).catch(() => { /* Preserve the original database outage error. */ });
     throw error;
   }
 }
@@ -194,7 +279,7 @@ export async function pollActiveSePayConnections() {
   let processed = 0, failed = 0;
   for (const connection of targets) {
     const existing = await prisma.bankSyncJob.findFirst({ where: { connectionId: connection.id, type: "SEPAY_HISTORY", status: "RUNNING",
-      startedAt: { gt: new Date(Date.now() - 5 * 60_000) } }, select: { id: true } });
+      leaseUntil: { gt: new Date() } }, select: { id: true } });
     if (existing) continue;
     const range = sepaySyncWindow(connection.lastSyncedAt);
     try {

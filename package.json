@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "node --env-file-if-exists=.env --import tsx scripts/integration-check.ts",
+    "test:bank-sync:integration": "node --env-file-if-exists=.env --import tsx scripts/bank-sync-integration-check.ts",
     "test:reporting:local": "node --env-file-if-exists=.env --import tsx scripts/reporting-readonly-smoke.ts",
     "test:security-integration": "node --env-file-if-exists=.env --import tsx scripts/security-integration-check.ts",
     "test:oauth": "node --env-file-if-exists=.env scripts/oauth-smoke.mjs",

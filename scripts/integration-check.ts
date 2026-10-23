@@ -23,6 +23,7 @@ import { commitImport, getImport, previewImport, retryFailedImport } from "../sr
 import { listNotifications, markNotification, reconcileNotifications } from "../src/server/notifications";
 import { auditLedger } from "./reconcile-ledger";
 import { walletLedgerDetail } from "../src/server/wallet-detail";
+import { cleanupBankSyncFixture } from "./bank-sync-fixture-cleanup";
 import { transactionDetail } from "../src/server/transaction-detail";
 import { listWalletReconciliations, reconcileWallet } from "../src/server/wallet-reconciliation";
 import ExcelJS from "exceljs";
@@ -1108,6 +1109,7 @@ async function main() {
     console.log(`PASS: P2–P6 integration (recurring, CSV/XLSX staging/commit/retry, notification isolation/dedup, concurrency, accounting); ${journals.length} journals balanced.`);
   } finally {
     for (const workspaceId of createdWorkspaces) {
+      await cleanupBankSyncFixture(workspaceId);
       await prisma.walletReconciliation.deleteMany({ where: { workspaceId } });
       await prisma.notification.deleteMany({ where: { workspaceId } });
       await prisma.recurringOccurrence.deleteMany({ where: { workspaceId } });

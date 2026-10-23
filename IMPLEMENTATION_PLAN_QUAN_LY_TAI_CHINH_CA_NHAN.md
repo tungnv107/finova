@@ -1,10 +1,14 @@
 # IMPLEMENTATION PLAN — PHẦN MỀM QUẢN LÝ TÀI CHÍNH CÁ NHÂN
 
+> **Checkpoint hiện hành 23/10/2026:** Bank Sync **9/45** `[x]`, SePay Bank Hub **13** `[x]` (hoàn tất SP3-02 authenticated manual sync). PostgreSQL `finova_test` **16/16 migrations, 36/36 scenarios PASS**; unit **320/320** (51 files), typecheck, lint, Prisma validate, route guard audit và production build PASS. Fixture cleanup không còn user/workspace/pending outbox kiểm thử. Browser Google OAuth, UAT SePay thực, outage DB, staging và ký duyệt còn mở; npm audit chưa cung cấp báo cáo đủ và stress run song song từng có 1 retry. **G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; Production/SePay Live NO-GO.** Các checkpoint bên dưới là lịch sử.
+
 > **Tên dự án tạm:** FinTrack / Tài Chính Của Tôi  
 > **Phiên bản tài liệu:** 1.0 · **Ngày lập:** 19/10/2026  
 > **Đầu vào:** `PROMPT_XAY_DUNG_UNG_DUNG_QUAN_LY_TAI_CHINH_CA_NHAN.md`  
 > **Đối tượng thực thi:** Codex / AI coding agent / đội ngũ Full-stack  
-> **Trạng thái cập nhật 21/10/2026:** P0–P6 đã có nhiều module hoạt động và kiểm thử backend; **G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; chưa đủ điều kiện production**. Checkbox `[x]` của từng task chỉ xác nhận phạm vi task đã được chứng minh cục bộ; gate E2E/staging vẫn phải nghiệm thu riêng. Xem `docs/TEST_REPORT.md` và `docs/PHASE_REPORT.md`.
+> **Trạng thái cập nhật 23/10/2026 (lịch sử):** Bank Sync **9/45** task `[x]`, SePay Bank Hub **12 task `[x]`** (SP3-05 đã nghiệm thu bằng synthetic PostgreSQL integration). `finova_test` **16/16 migrations, 31/31 scenarios PASS**, unit **320/320** (51 files) PASS; typecheck, lint, Prisma validate PASS. Có lease takeover, consent theo account và stress/HTTP 401/429/503/timeout/recovery; **chưa có SePay Sandbox UAT thật**. G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; **Production/SePay Live NO-GO**. Checkpoint cũ bên dưới giữ lịch sử.
+> **Trạng thái cập nhật 23/10/2026 (lịch sử):** Bank Sync **9/45** task `[x]` và SePay Bank Hub **11 task `[x]`** (SP1-03/SP3-01 mới nghiệm thu); PostgreSQL `finova_test` **15/15 migrations, 24/24 Bank Sync scenarios PASS**, unit **314/314** (50 files) PASS. Tình huống lỗi trang lịch sử thứ hai (HTTP 503/timeout) và phục hồi đã đạt. Typecheck, lint, Prisma validate, route audit 54/69 và production build PASS ở checkpoint kiểm tra gần nhất. **G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; PRODUCTION/SEPAY LIVE NO-GO** vì còn thiếu UAT đối tác, DB outage, browser auth, HTTPS staging và sign-off. Trạng thái 22/10 bên dưới lưu như mốc lịch sử.
+> **Trạng thái cập nhật 22/10/2026:** P0–P6 đã có nhiều module hoạt động và kiểm thử backend; **G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; chưa đủ điều kiện production**. Bank Sync **9/45** và SePay Bank Hub **9 task** đã nghiệm thu (tracker chuyên biệt trong `docs/`); **17/17 PostgreSQL Bank Sync integration**, **310/310 unit**, typecheck/lint/build PASS. Checkbox `[x]` của từng task chỉ xác nhận phạm vi task đã được chứng minh cục bộ; gate E2E/staging vẫn phải nghiệm thu riêng. Xem `docs/TEST_REPORT.md` và `docs/PHASE_REPORT.md`.
 
 ---
 

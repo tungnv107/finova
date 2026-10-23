@@ -45,7 +45,7 @@ export async function persistBankEnvelope(providerCode: "SANDBOX" | "STATEMENT_I
     const connection = await db.bankConnection.findFirst({ where: { id: connectionId, providerCode, status: "ACTIVE" },
       include: { accounts: { where: { providerAccountRef: input.accountRef, status: "ACTIVE", currency: "VND" } },
         consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } } } });
-    if (!connection || connection.accounts.length !== 1 || connection.consents.length === 0 ||
+    if (!connection || connection.accounts.length !== 1 || !bankConsentAllowsAccount(connection.consents, providerCode, input.accountRef) ||
         (connection.consentExpiresAt && connection.consentExpiresAt <= new Date())) {
       throw new HttpError(403, "UNAUTHORIZED_BANK_ACCOUNT", "Nguồn hoặc tài khoản không được phép đồng bộ.");
     }
@@ -64,14 +64,31 @@ export async function persistBankEnvelope(providerCode: "SANDBOX" | "STATEMENT_I
   });
 }
 
+/** SePay consent belongs to an individual linked account, not its sibling accounts. */
+export function bankConsentAllowsAccount(consents: { scopeJson: unknown }[], providerCode: string, accountRef: string) {
+  if (providerCode !== "SEPAY_BANKHUB") return consents.length > 0;
+  return consents.some(consent => {
+    const scope = consent.scopeJson;
+    return !!scope && typeof scope === "object" && !Array.isArray(scope) &&
+      (scope as Record<string, unknown>).transactions === true &&
+      (scope as Record<string, unknown>).bankAccountXid === accountRef;
+  });
+}
+
 /** Each event is processed atomically with its canonical rows and review entries. */
 async function processEvent(id: string) {
   return serializable(async db => {
-    const event = await db.bankRawEvent.findUniqueOrThrow({ where: { id }, include: { connection: { include: { accounts: true } } } });
+    const event = await db.bankRawEvent.findUniqueOrThrow({ where: { id }, include: { connection: { include: {
+      accounts: true, consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } },
+    } } } });
     if (event.processingStatus === "DONE") return;
     if (event.connection.status !== "ACTIVE") throw new Error("Connection is paused or revoked.");
     const decrypted = JSON.parse(openBankEvent(event.payloadCiphertext).toString("utf8"));
     const envelope = bankEnvelope.parse(decrypted.envelope ?? decrypted);
+    if (!bankConsentAllowsAccount(event.connection.consents, event.providerCode, envelope.accountRef) ||
+        (event.connection.consentExpiresAt && event.connection.consentExpiresAt <= new Date())) {
+      throw new Error("Bank sync consent is revoked or expired.");
+    }
     const account = event.connection.accounts.find(a => a.providerAccountRef === envelope.accountRef && a.status === "ACTIVE");
     if (!account || account.currency !== "VND") throw new Error("Bank account is not mapped in the verified connection.");
     for (const row of envelope.transactions) {
@@ -160,6 +177,43 @@ export async function processBankOutbox(limit = 20) {
     }
   }
   return { processed, retried };
+}
+
+/** Explicit, audited operator recovery of one DLQ event. The worker still requires active consent. */
+export async function replayBankDeadLetter(workspaceId: string, eventId: string, reasonCode: "SOURCE_RESTORED" | "TRANSIENT_FAILURE" | "OPERATOR_REVIEWED") {
+  return serializable(async db => {
+    const event = await db.bankRawEvent.findFirst({ where: { id: eventId, workspaceId }, include: {
+      connection: { include: { accounts: { where: { status: "ACTIVE" } },
+        consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } } } },
+    } });
+    if (!event) throw new HttpError(404, "EVENT_NOT_FOUND", "Không tìm thấy sự kiện trong workspace.");
+    if (event.connection.status !== "ACTIVE" || event.connection.accounts.length === 0 ||
+        event.connection.consents.length === 0 ||
+        (event.connection.consentExpiresAt && event.connection.consentExpiresAt <= new Date())) {
+      throw new HttpError(409, "CONNECTION_INACTIVE", "Nguồn hoặc quyền đồng bộ chưa được khôi phục.");
+    }
+    if (event.processingStatus !== "DLQ") throw new HttpError(409, "NOT_IN_DLQ", "Sự kiện chưa ở hàng đợi lỗi.");
+    // A connection may have another active account after the original account
+    // was unlinked. Validate the encrypted source's account before requeueing.
+    const decrypted = JSON.parse(openBankEvent(event.payloadCiphertext).toString("utf8"));
+    const envelope = bankEnvelope.parse(decrypted.envelope ?? decrypted);
+    if (!event.connection.accounts.some(account => account.providerAccountRef === envelope.accountRef && account.currency === "VND") ||
+        !bankConsentAllowsAccount(event.connection.consents, event.connection.providerCode, envelope.accountRef)) {
+      throw new HttpError(409, "ACCOUNT_UNMAPPED", "Tài khoản nguồn của sự kiện không còn được liên kết.");
+    }
+    const job = await db.bankSyncOutbox.findUnique({ where: { eventType_aggregateId: { eventType: "BANK_EVENT", aggregateId: eventId } } });
+    if (!job || job.status !== "DLQ") throw new HttpError(409, "NOT_IN_DLQ", "Hàng đợi không còn ở trạng thái lỗi.");
+    const changed = await db.bankSyncOutbox.updateMany({ where: { id: job.id, status: "DLQ" }, data: {
+      status: "PENDING", retryCount: 0, nextAttemptAt: new Date(), leaseUntil: null,
+    } });
+    if (changed.count !== 1) throw new HttpError(409, "REPLAY_CONFLICT", "Sự kiện đang được xử lý.");
+    await db.bankRawEvent.update({ where: { id: event.id }, data: { processingStatus: "PENDING", lastError: null } });
+    await db.bankAuditEvent.create({ data: { workspaceId, actorType: "SYSTEM", actorId: "BANK_REPLAY_OPERATOR",
+      action: "DLQ_REPLAY_REQUESTED", resourceType: "RAW_EVENT", resourceId: event.id,
+      metadataRedactedJson: { reasonCode, priorRetryCount: job.retryCount },
+    } });
+    return { eventId: event.id, status: "PENDING" as const };
+  });
 }
 
 export async function listBankReviews(workspaceId: string) {

@@ -873,6 +873,7 @@ model BankSyncJob {
   metricsJson Json?
   failureReason String?
   startedAt DateTime?
+  leaseUntil DateTime?
   endedAt DateTime?
   connection BankConnection @relation(fields: [workspaceId, connectionId], references: [workspaceId, id], onDelete: Restrict)
   @@index([connectionId, status])

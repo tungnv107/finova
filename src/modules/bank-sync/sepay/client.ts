@@ -8,13 +8,13 @@ const accountSchema = z.object({
   xid: z.string().min(1), company_xid: z.string().min(1), bank_code: z.string().nullish(),
   brand_name: z.string().nullish(), account_number: z.string().min(1), active: z.union([z.string(), z.number(), z.boolean()]).nullish(),
 });
-const accountListSchema = z.object({ data: z.array(accountSchema), meta: z.object({ has_more: z.boolean().optional(), page_count: z.number().optional() }).passthrough() });
+const accountListSchema = z.object({ data: z.array(accountSchema), meta: z.object({ has_more: z.boolean().optional(), page_count: z.number().int().nonnegative().optional() }).passthrough() });
 export const historyRowSchema = z.object({
   transaction_id: z.string().min(1), transaction_date: z.string().min(1), bank_account_xid: z.string().min(1),
   company_xid: z.string().min(1), transfer_type: z.enum(["credit", "debit"]), amount: z.number().int().positive().safe(),
   transaction_content: z.string(), reference_number: z.string().nullish(),
 });
-const historySchema = z.object({ data: z.array(historyRowSchema), meta: z.object({ page: z.number(), total_pages: z.number() }).passthrough() });
+const historySchema = z.object({ data: z.array(historyRowSchema), meta: z.object({ page: z.number().int().positive(), total_pages: z.number().int().nonnegative() }).passthrough() });
 
 export type SePayAccount = z.infer<typeof accountSchema>;
 export type SePayHistoryRow = z.infer<typeof historyRowSchema>;
@@ -74,7 +74,11 @@ export class SePayBankHubClient {
           Authorization: `Bearer ${token}`, ...(init.body ? { "Content-Type": "application/json" } : {}),
         }, ...(init.body ? { body: JSON.stringify(init.body) } : {}), cache: "no-store", signal: AbortSignal.timeout(10000) });
       } catch { throw new HttpError(503, "SEPAY_UNREACHABLE", "Không thể kết nối SePay Bank Hub."); }
-      if (response.status === 401 && attempt === 0) { this.token = undefined; continue; }
+      if (response.status === 401) {
+        this.token = undefined;
+        if (attempt === 0) continue;
+        throw new HttpError(503, "SEPAY_AUTH_ERROR", "SePay từ chối xác thực đối tác sau khi cấp lại token.");
+      }
       if (!response.ok) throw new HttpError(response.status === 429 || response.status >= 500 ? 503 : 502,
         "SEPAY_API_ERROR", `SePay Bank Hub trả về HTTP ${response.status}.`);
       try { return await response.json() as unknown; }
@@ -107,7 +111,9 @@ export class SePayBankHubClient {
     const output: SePayAccount[] = [];
     for (let page = 1; page <= 20; page++) {
       const query = new URLSearchParams({ company_xid: companyXid, page: String(page), per_page: "50" });
-      const body = accountListSchema.parse(await this.request(`/bank-account?${query}`));
+      const parsed = accountListSchema.safeParse(await this.request(`/bank-account?${query}`));
+      if (!parsed.success) throw new HttpError(502, "SEPAY_BAD_RESPONSE", "Danh sách tài khoản SePay không hợp lệ.");
+      const body = parsed.data;
       if (body.data.some(a => a.company_xid !== companyXid)) throw new HttpError(502, "SEPAY_TENANT_MISMATCH", "SePay trả về tài khoản sai công ty.");
       output.push(...body.data);
       if (!body.meta.has_more && !(body.meta.page_count && page < body.meta.page_count)) return output;
@@ -118,7 +124,12 @@ export class SePayBankHubClient {
   async historyPage(companyXid: string, accountXid: string, from: string, to: string, page: number) {
     const q = new URLSearchParams({ company_xid: companyXid, bank_account_xid: accountXid,
       start_transaction_date: from, end_transaction_date: to, page: String(page), per_page: "50" });
-    const parsed = historySchema.parse(await this.request(`/transaction?${q}`));
+    const response = historySchema.safeParse(await this.request(`/transaction?${q}`));
+    if (!response.success) throw new HttpError(502, "SEPAY_BAD_RESPONSE", "Trang lịch sử SePay không hợp lệ.");
+    const parsed = response.data;
+    if (parsed.meta.page !== page || (parsed.meta.total_pages > 0 && parsed.meta.total_pages < page)) {
+      throw new HttpError(502, "SEPAY_INVALID_PAGE", "SePay trả về số trang lịch sử không nhất quán.");
+    }
     if (parsed.data.some(r => r.bank_account_xid !== accountXid || r.company_xid !== companyXid)) {
       throw new HttpError(502, "SEPAY_TENANT_MISMATCH", "SePay trả về giao dịch không thuộc tài khoản.");
     }

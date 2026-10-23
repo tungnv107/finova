@@ -1,5 +1,6 @@
 /* Recover only synthetic integration fixtures left by an interrupted test cleanup. */
 import { prisma } from "../src/lib/db";
+import { cleanupBankSyncFixture } from "./bank-sync-fixture-cleanup";
 
 async function main() {
   const url = new URL(process.env.DATABASE_URL ?? "");
@@ -30,6 +31,7 @@ async function main() {
 
   const userIds = [...new Set(workspaces.map(workspace => workspace.createdById))];
   for (const { id: workspaceId } of workspaces) {
+    await cleanupBankSyncFixture(workspaceId);
     await prisma.walletReconciliation.deleteMany({ where: { workspaceId } });
     await prisma.notification.deleteMany({ where: { workspaceId } });
     await prisma.recurringOccurrence.deleteMany({ where: { workspaceId } });

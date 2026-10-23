@@ -1,8 +1,33 @@
 # Báo cáo triển khai theo phase — Finova
 
-**Ngày cập nhật:** 21/10/2026
+**Ngày cập nhật:** 23/10/2026
 **Repository:** `D:\Projects\Finova`
 **Phạm vi:** P0–P7 trên môi trường phát triển; chưa nghiệm thu production.
+
+## Checkpoint hiện hành — authenticated SePay manual sync (23/10/2026)
+
+- **Đã nghiệm thu:** SP3-02 sau xác thực Better Auth signed session và Origin guard bằng API route thực trên PostgreSQL test; SePay **13 nhiệm vụ [x]**. Bank Sync giữ **9/45 [x]**.
+- **Kiểm thử:** `finova_test` **36/36 PASS**, 16/16 migrations; fixture cleanup còn 0 workspace/user/pending outbox. Unit **320/320** (51 files), typecheck, lint, Prisma validate, route guard audit 54/69, Next production build 41/41 static pages PASS. Một stress run song song có 1 retry; independent rerun PASS.
+- **Chưa đạt:** npm security audit inconclusive; Google OAuth browser E2E, SePay provider UAT, DB outage/recovery, scheduler triển khai, HTTPS staging, backup/restore và sign-off. **G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; Production/SePay Live NO-GO.** Các checkpoint sau đây là lịch sử.
+
+## Checkpoint lịch sử — SePay lease, consent, pagination (23/10/2026)
+
+- **Đã nghiệm thu:** SP3-05 sau stress pagination, lỗi 429/503/timeout/401 và recovery có dedupe; SePay **12 task [x]**. Bank Sync giữ **9/45 [x]** vì outage DB, các trường hợp financial E2E và điều kiện đối tác vẫn thiếu.
+- **Kiểm thử:** `npm test` **320/320** (51 files), PostgreSQL `finova_test` **31/31** scenarios PASS; **16/16** migrations. TypeScript, ESLint, Prisma validate PASS. Bổ sung lease/takeover, kiểm tra consent theo từng tài khoản và ngăn watermark tiến khi revoked/paused giữa HTTP.
+- **Còn mở:** Authenticated route/browser E2E (SP3-02), SePay Sandbox UAT (SP5-03), scheduler thực/backfill nhiều tháng, database outage, HTTPS staging và sign-off. **Production/SePay Live NO-GO.** Các checkpoint tiếp theo dưới đây là lịch sử.
+
+## Checkpoint mới — SePay tenant/history và recovery (23/10/2026)
+
+- **Đã nghiệm thu:** SP1-03 (tenant-scoped bank accounts, wrong company, concurrent claims, pagination) và SP3-01 (history theo company/account, 50 rows, 20 trang/31 ngày, DB two-page/review-first). SePay tăng **9 → 11 task [x]**; Bank Sync **9/45** không thay đổi.
+- **Đã kiểm thử:** `npm test` **314/314** (50 files), PostgreSQL `finova_test` **24/24** scenarios PASS với 15/15 migrations, bao gồm 3 ca bổ sung HTTP 503/timeout ở trang thứ hai và hồi phục idempotent. Mọi kiểm thử DB dùng fixture cô lập và cleanup, không reset dữ liệu ứng dụng. TypeScript, ESLint, Prisma validate, route audit 54/69 và production build PASS ở checkpoint kiểm tra gần nhất.
+- **Chưa đạt:** SP3-05 cần stress/token refresh giữa trang; Bank Sync DB outage/recovery, full finance regression, Google/browser, Hosted Link/IPN/history thực, HTTPS staging, pháp chế/security/ops approval. **G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; PRODUCTION và SEPAY LIVE NO-GO.**
+
+## Checkpoint mới — Bank Sync/SePay DLQ replay và consent (22/10/2026)
+
+- **Đã triển khai:** endpoint operator-only `POST /api/internal/bank-sync/replay`, Bearer secret độc lập, giới hạn payload/rate limit, Serializable requeue + BankAuditEvent; worker kiểm tra consent tại thời điểm xử lý, replay kiểm tra tài khoản gốc ACTIVE/VND. Giữ chính sách REVIEW_FIRST, không tạo journal tự động.
+- **Đã kiểm thử:** `finova_test` 15/15 migrations, **17/17 PostgreSQL integration scenarios**, **310/310 unit** (50 files), typecheck/lint/build PASS; security route audit 54/69 và runtime dependencies 0 findings ở checkpoint gần nhất. Môi trường sandbox thường không truy cập được Docker DB; chạy integration với quyền phù hợp đã đạt exit code 0. Không truy cập/reset DB chính.
+- **Tracker:** Bank Sync **9/45** `[x]` (đóng BS2-04); SePay Bank Hub **9 task** `[x]`, SP5-03/04/05 và các hạng mục cần đối tác vẫn mở. Runbook đã cập nhật thao tác replay có kiểm toán.
+- **Release:** G5 OPEN; G6 CONDITIONAL; G7 IN PROGRESS; P8 NOT STARTED; **NO-GO** kết nối ngân hàng thật. Thiếu IPN key đúng Bank Hub, HTTPS callback, Hosted Link & history UAT thực, authenticated browser E2E, outage recovery, restore/rotation, vận hành đa instance, pháp chế và sign-off.
 
 ## Checkpoint mới — PostgreSQL 13 migrations, finance integration và benchmark (21/10/2026)
 

@@ -44,9 +44,9 @@ describe("Serializable financial operation retry", () => {
     expect(mocked.transaction).toHaveBeenCalledTimes(1);
   });
 
-  it("fails after bounded retries instead of looping on an unavailable database", async () => {
+  it("fails after nine attempts on persistent serialization conflicts", async () => {
     mocked.transaction.mockRejectedValue(conflict("P2034"));
     await expect(serializable(vi.fn())).rejects.toMatchObject({ code: "P2034" });
-    expect(mocked.transaction).toHaveBeenCalledTimes(5);
+    expect(mocked.transaction).toHaveBeenCalledTimes(9);
   });
 });

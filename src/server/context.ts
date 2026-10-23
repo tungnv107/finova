@@ -6,8 +6,8 @@ import { limitAuthenticatedRequest } from "@/server/rate-limit";
 
 export type UserContext = { userId: string; workspaceId: string; name: string; image: string | null };
 
-export async function getContext(): Promise<UserContext | null> {
-  const session = await auth.api.getSession({ headers: await headers() });
+export async function getContext(request?: NextRequest): Promise<UserContext | null> {
+  const session = await auth.api.getSession({ headers: request?.headers ?? await headers() });
   if (!session) return null;
   const user = session.user;
   const workspaceId = await bootstrapPersonalWorkspace(user);
@@ -15,7 +15,7 @@ export async function getContext(): Promise<UserContext | null> {
 }
 
 export async function requireContext(request?: NextRequest): Promise<UserContext> {
-  const context = await getContext();
+  const context = await getContext(request);
   if (!context) throw new HttpError(401, "UNAUTHENTICATED", "Vui lòng đăng nhập với Google.");
   if (request) await limitAuthenticatedRequest(context, request);
   return context;

@@ -94,6 +94,56 @@ describe("SePay Bank Hub verified contract", () => {
     await expect(client.historyPage(company, account, "2026-10-21", "2026-10-22", 1)).rejects.toThrow(/không thuộc tài khoản/);
   });
 
+  it("scopes every account page, rejects mixed companies and stops after a bounded page count", async () => {
+    const accounts = (firstCompany: string) => [{ xid: account, company_xid: firstCompany,
+      account_number: "12345678", active: "1" }];
+    const pagedFetch = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).endsWith("/token")) return response({ access_token: "valid", ttl: 600 }, 201);
+      const page = Number(new URL(String(url)).searchParams.get("page"));
+      return response({ data: accounts(company), meta: { has_more: page === 1, page_count: 2 } });
+    });
+    const paged = new SePayBankHubClient("id", "secret", "sandbox", pagedFetch as typeof fetch);
+    await expect(paged.listAccounts(company)).resolves.toHaveLength(2);
+    expect(pagedFetch).toHaveBeenCalledTimes(3);
+
+    const wrongCompany = new SePayBankHubClient("id", "secret", "sandbox", vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith("/token") ? response({ access_token: "valid", ttl: 600 }, 201)
+        : response({ data: accounts("foreign-company"), meta: { has_more: false } })) as typeof fetch);
+    await expect(wrongCompany.listAccounts(company)).rejects.toMatchObject({ code: "SEPAY_TENANT_MISMATCH" });
+
+    const overLimit = new SePayBankHubClient("id", "secret", "sandbox", vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith("/token") ? response({ access_token: "valid", ttl: 600 }, 201)
+        : response({ data: accounts(company), meta: { has_more: true } })) as typeof fetch);
+    await expect(overLimit.listAccounts(company)).rejects.toMatchObject({ code: "SEPAY_PAGINATION_LIMIT" });
+  });
+
+  it("fails closed on provider pagination 429, HTTP 5xx, or malformed data", async () => {
+    for (const status of [429, 503]) {
+      const client = new SePayBankHubClient("id", "secret", "sandbox", vi.fn(async (url: string | URL | Request) =>
+        String(url).endsWith("/token") ? response({ access_token: "valid", ttl: 600 }, 201)
+          : response({ message: "Retry later" }, status)) as typeof fetch);
+      await expect(client.listAccounts(company)).rejects.toMatchObject({ code: "SEPAY_API_ERROR", status: 503 });
+    }
+    const invalid = new SePayBankHubClient("id", "secret", "sandbox", vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith("/token") ? response({ access_token: "valid", ttl: 600 }, 201)
+        : response({ data: "unexpected", meta: {} })) as typeof fetch);
+    await expect(invalid.listAccounts(company)).rejects.toThrow();
+  });
+
+  it("rejects a repeated or malformed page marker rather than accepting duplicated history", async () => {
+    const fetcher = vi.fn(async (url: string | URL | Request) => String(url).endsWith("/token")
+      ? response({ access_token: "valid", ttl: 600 }, 201)
+      : response({ data: [history], meta: { page: 1, total_pages: 2 } }));
+    const client = new SePayBankHubClient("id", "secret", "sandbox", fetcher as typeof fetch);
+    await expect(client.historyPage(company, account, "2026-10-21", "2026-10-22", 2))
+      .rejects.toMatchObject({ code: "SEPAY_INVALID_PAGE", status: 502 });
+    const malformed = new SePayBankHubClient("id", "secret", "sandbox", vi.fn(async (url: string | URL | Request) =>
+      String(url).endsWith("/token") ? response({ access_token: "valid", ttl: 600 }, 201)
+        : response({ data: [history], meta: { page: "1", total_pages: 2 } })) as typeof fetch);
+    await expect(malformed.historyPage(company, account, "2026-10-21", "2026-10-22", 1))
+      .rejects.toMatchObject({ code: "SEPAY_BAD_RESPONSE", status: 502 });
+  });
+
   it("fails on unauthorized merchant, network errors and invalid token payload", async () => {
     const forbidden = new SePayBankHubClient("id", "secret", "sandbox", vi.fn(async () => response({}, 401)) as typeof fetch);
     await expect(forbidden.listAccounts(company)).rejects.toThrow(/từ chối xác thực/);
