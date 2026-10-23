@@ -199,7 +199,7 @@ export function FinanceDashboard({ report, allWallets, allCategories, worth, det
         </Link>)}</div>
       </></section>}
     </div>}
-    <p className="subtitle" style={{ fontSize: 12, marginTop: 6 }}><CircleDollarSign size={14} style={{ verticalAlign: "middle" }} /> Các số tiền được tính từ sổ cái PostgreSQL. Thu chi không bao gồm chuyển tiền giữa ví và số dư mở đầu. <ArrowLeftRight size={13} style={{ verticalAlign: "middle" }} /> Ngày kết thúc là ngày đầu tiên không thuộc kỳ báo cáo.</p>
+    {detailed && <p className="subtitle" style={{ fontSize: 12, marginTop: 6 }}><CircleDollarSign size={14} style={{ verticalAlign: "middle" }} /> Các số tiền được tính từ sổ cái PostgreSQL. Thu chi không bao gồm chuyển tiền giữa ví và số dư mở đầu. <ArrowLeftRight size={13} style={{ verticalAlign: "middle" }} /> Ngày kết thúc là ngày đầu tiên không thuộc kỳ báo cáo.</p>}
     </div>
     <QuickTransactionSheet open={quickOpen} initialKind={quickKind} onClose={() => setQuickOpen(false)} />
   </>;
