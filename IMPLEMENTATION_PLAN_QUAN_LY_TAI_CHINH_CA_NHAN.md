@@ -1,5 +1,7 @@
 # IMPLEMENTATION PLAN — PHẦN MỀM QUẢN LÝ TÀI CHÍNH CÁ NHÂN
 
+> **Phân hệ mở rộng mới 23/10/2026:** [Quản trị hệ thống, Lite/Premium, thu phí chuyển khoản, tự động kích hoạt và dashboard vận hành — Implementation Plan 55 task](docs/FINOVA_ADMIN_PREMIUM_IMPLEMENTATION_PLAN.md). Đây là **kế hoạch mới, 0/55 nhiệm vụ triển khai**; phải chốt giá/quyền lợi và nghiệm thu provider nhận phí riêng trước khi thu tiền thật. Không nhầm với tiến độ Bank Sync người dùng.
+
 > **Checkpoint hiện hành 23/10/2026:** Bank Sync **9/45** `[x]`, SePay Bank Hub **13** `[x]` (hoàn tất SP3-02 authenticated manual sync). PostgreSQL `finova_test` **16/16 migrations, 36/36 scenarios PASS**; unit **320/320** (51 files), typecheck, lint, Prisma validate, route guard audit và production build PASS. Fixture cleanup không còn user/workspace/pending outbox kiểm thử. Browser Google OAuth, UAT SePay thực, outage DB, staging và ký duyệt còn mở; npm audit chưa cung cấp báo cáo đủ và stress run song song từng có 1 retry. **G5 OPEN, G6 CONDITIONAL, G7 IN PROGRESS, P8 NOT STARTED; Production/SePay Live NO-GO.** Các checkpoint bên dưới là lịch sử.
 
 > **Tên dự án tạm:** FinTrack / Tài Chính Của Tôi  
