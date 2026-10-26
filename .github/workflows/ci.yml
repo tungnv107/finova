@@ -41,3 +41,73 @@ jobs:
       - run: npm run test:security-integration
       - run: npm run db:reconcile
       - run: npm run build
+
+  admin-premium-qa:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: finova_admin_test_ci
+          POSTGRES_USER: finova
+          POSTGRES_PASSWORD: finova_ci_only
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U finova -d finova_admin_test_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Disposable CI database; no real billing provider, bank or production data.
+      DATABASE_URL: postgresql://finova:finova_ci_only@127.0.0.1:5432/finova_admin_test_ci?schema=public
+      BETTER_AUTH_SECRET: finova-admin-ci-ephemeral-better-auth-secret
+      BETTER_AUTH_URL: http://localhost:3035
+      NEXT_PUBLIC_APP_URL: http://localhost:3035
+      FINOVA_BROWSER_URL: http://localhost:3035
+      FINOVA_ADMIN_ENABLED: "1"
+      FINOVA_BILLING_CHECKOUT_ENABLED: "1"
+      FINOVA_BILLING_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      FINOVA_NEXT_DIST_DIR: .next-admin-ci
+      FINOVA_TEST_RUN: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npx prisma migrate deploy
+      - run: npm run admin:test-bootstrap
+      - run: npm run admin:test-billing-schema
+      - run: npm run admin:test-integration
+      - run: npm run admin:test-catalog
+      - run: npm run admin:test-users
+      - run: npm run admin:test-subscriptions
+      - run: npm run admin:test-cohorts
+      - run: npm run admin:test-billing-analytics
+      - run: npm run admin:test-signed-session
+      - run: npm run admin:test-export
+      - run: npm run admin:test-order-history
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run security:routes
+      - run: npm run build
+      - name: Signed-role browser acceptance (QA sessions only)
+        shell: bash
+        run: |
+          npm run start -- --port 3035 > /tmp/finova-admin-ci-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail --output /dev/null http://localhost:3035/login; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            cat /tmp/finova-admin-ci-server.log
+            exit 1
+          fi
+          npm run admin:test-shell-browser
+          npm run admin:test-billing-browser

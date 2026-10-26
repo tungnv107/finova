@@ -124,25 +124,58 @@ Nghiệm thu tối thiểu: trang login trả thành công qua HTTPS, container 
 
 ## 7. Sao lưu và cập nhật
 
-Trước mỗi lần cập nhật cần tạo bản sao lưu và kiểm tra khả năng khôi phục trên database **khác**:
+**Cập nhật 26/10/2026 — nâng cấp một lượt (khuyến nghị).** Script `scripts/release-server.sh` dành cho **Linux + Docker Compose + PostgreSQL do Compose quản lý**, giữ nguyên dữ liệu và các Docker volumes. Cần có `git`, `python3`, `curl`, `flock`, `sha256sum`, Docker và Docker Compose V2. Trước lần chạy đầu, đảm bảo NPM đang cùng network `FINOVA_NPM_NETWORK`, cấu hình `.env` của **máy chủ** có giá trị thật, và ít nhất:
 
-```bash
-mkdir -p backups
-chmod 700 backups
-docker compose -f compose.yaml -f compose.npm.yaml exec -T db \
-  pg_dump -U finova -d finova -Fc > "backups/finova_$(date +%Y%m%d_%H%M%S).dump"
+```dotenv
+POSTGRES_PASSWORD=<server-db-password>
+FINOVA_CONTAINER_DATABASE_URL=postgresql://finova:<url-encoded-password>@db:5432/finova?schema=public&connection_limit=16
+FINOVA_MIGRATION_DATABASE_URL=postgresql://finova:<url-encoded-password>@db:5432/finova?schema=public
+BETTER_AUTH_SECRET=<secret-at-least-32-characters>
+BETTER_AUTH_URL=https://finova.io.vn
+NEXT_PUBLIC_APP_URL=https://finova.io.vn
+FINOVA_NPM_NETWORK=<existing-npm-docker-network>
+FINOVA_APP_PORT=3002
 ```
 
-Sao lưu thực tế chứa dữ liệu tài chính nhạy cảm; mã hóa, lưu offsite và quản lý retention theo chính sách bảo mật. Để phát hành bản mới:
+`<...>` chỉ là chỗ điền giá trị, không đưa vào `.env` nguyên văn. `FINOVA_MIGRATION_DATABASE_URL` phải dùng **chính DB `finova` của dịch vụ Compose**, không được trỏ tới DB thử nghiệm hay hệ thống khác. Script kiểm tra hostname/port/user/database/password giữa app, migration và Postgres, đồng thời từ chối mật khẩu DB mẫu và origin không phải HTTPS. Với NPM chạy trực tiếp trên Linux host (không phải container), dùng `--no-npm` ở mọi lần chạy và trỏ proxy tới `127.0.0.1:3002`.
+
+Trên máy chủ, từ checkout Git **sạch** của `main` (nếu chưa clone, làm theo mục 3):
 
 ```bash
-git pull --ff-only
+cd ~/apps/finova
+git status --short
+git pull --ff-only origin main
+bash scripts/release-server.sh --dry-run
+bash scripts/release-server.sh
+```
+
+Không cần gọi `prisma migrate deploy` thủ công khi đã chạy script: quá trình nâng cấp đã bao gồm việc đó. Script tự động: khóa để chặn phát hành song song; cập nhật nhánh `main` bằng fast-forward; xác thực cấu hình; build image app và image migration; khởi động DB; xác minh DB `finova/finova`; xuất `pg_dump -Fc` và xác nhận archive qua `pg_restore --list`; ghi checksum SHA-256; gắn tag rollback cho image app cũ (nếu có); chạy **`prisma migrate deploy`**; khởi động image mới; đợi container healthy và thử `/login` + `/manifest.webmanifest` qua cổng loopback. Nếu lỗi ở bất kỳ bước nào, script dừng với mã lỗi. Script **không** xóa volume, reset schema, tự restore DB hoặc tự kích hoạt thanh toán live.
+
+Bản sao lưu đặt mặc định ở `~/apps/finova-backups/` (thư mục ngang hàng với repo, không commit) cùng file `.sha256`; đổi bằng biến `FINOVA_RELEASE_BACKUP_DIR=/đường/dẫn/riêng` nếu cần. **Bản dump chưa được mã hóa tự động:** mã hóa, chuyển offsite, quản lý quyền và retention theo quy định. Trước khi phát hành production thật, khôi phục thử trên DB **cách ly** và đối soát dữ liệu. Nếu DB không nằm trong Compose `db`, script này chưa phù hợp: phải điều chỉnh backup, kiểm tra DSN và migration cho kiến trúc tương ứng trước khi dùng.
+
+Kiểm tra sau phát hành:
+
+```bash
+docker compose -f compose.yaml -f compose.npm.yaml --profile app ps
+docker compose -f compose.yaml -f compose.npm.yaml --profile app logs --tail=100 app
+curl -fI https://finova.io.vn/login
+curl -fI https://finova.io.vn/manifest.webmanifest
+docker compose -f compose.yaml -f compose.npm.yaml --profile release run --rm migrate npx prisma migrate status
+```
+
+Lưu ý: lệnh cuối sử dụng môi trường migration và chỉ truy vấn trạng thái schema. Kiểm thử **đăng nhập Google thật**, phiên người dùng, truy cập và giao dịch đã xác thực, reverse proxy, chính sách bảo mật và giám sát riêng trước khi chuyển lưu lượng production. Các tính năng Admin/Premium/Billing tiếp tục mặc định tắt trong `.env`; Docker Compose nay truyền đầy đủ các flag cấu hình. Chỉ bật khi đã hoàn thành điều kiện UAT/phân quyền/nhà cung cấp trong [payment runbook](FINOVA_ADMIN_PREMIUM_PAYMENT_RUNBOOK.md).
+
+Nếu phát hành lỗi sau migration, trước tiên kiểm tra trạng thái container, logs, `prisma migrate status` và backup/checksum. Script lưu image cũ với tag `finova:rollback-<UTC timestamp>`. **Chỉ** quay lại image đó sau khi đã xác nhận schema mới tương thích image cũ; migration của Prisma mặc định không có thao tác rollback. Tránh `docker compose down -v`, `prisma migrate reset` hoặc khôi phục dữ liệu đè production: có thể mất giao dịch mới.
+
+### Thao tác thủ công (khi cần tách từng bước)
+
+Nếu operator muốn giám sát từng bước sau khi tự backup và đối soát DB:
+
+```bash
 docker compose -f compose.yaml -f compose.npm.yaml --profile release build migrate
 docker compose -f compose.yaml -f compose.npm.yaml --profile release run --rm migrate
 docker compose -f compose.yaml -f compose.npm.yaml --profile app up -d --build app
 docker compose -f compose.yaml -f compose.npm.yaml --profile app ps
 ```
 
-Không tự động quay lui database sau khi đã có giao dịch mới. Việc chạy lại image cũ chỉ an toàn khi tương thích với schema database sau migration; lưu commit/image digest trước mỗi lần phát hành để hỗ trợ rollback có kiểm soát.
-
-**Trạng thái hiện tại:** Các kiểm thử tự động ở repo đã có tiến triển nhưng OAuth E2E, HTTPS staging, SePay Sandbox UAT, database outage/recovery, backup/restore drill và nghiệm thu bảo mật vẫn là hạng mục trước khi production. Hướng dẫn này chưa thực hiện thao tác nào trên máy chủ thật.
+**Trạng thái hiện tại:** Chưa chạy script trên máy chủ thật hoặc nghiệm thu OAuth E2E, HTTPS staging, SePay Sandbox UAT, database outage/recovery và offsite restore. Script tự động hóa phát hành, không thay thế các bước nghiệm thu production này.

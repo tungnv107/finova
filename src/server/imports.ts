@@ -9,6 +9,7 @@ import { parseVnd } from "@/lib/money";
 import { HttpError, type UserContext } from "@/server/context";
 import { createTransactionInDb } from "@/server/ledger";
 import { serializable } from "@/server/serializable";
+import { requireWorkspacePremiumInDb } from "@/server/premium";
 
 const previewOptions = z.object({
   dateColumn: z.string().min(1).max(100),
@@ -83,6 +84,7 @@ export async function previewImport(context: UserContext, file: File, raw: unkno
   const prior = new Set(existing.map(r => r.sourceHash));
   for (const row of prepared) if (row.status === "VALID" && prior.has(row.sourceHash)) { row.status = "DUPLICATE"; row.error = "Đã được nhập trong một đợt trước."; }
   const batch = await prisma.$transaction(async tx => {
+    await requireWorkspacePremiumInDb(tx, context.workspaceId, "STATEMENT_IMPORT");
     const batch = await tx.importBatch.create({ data: { workspaceId: context.workspaceId, createdById: context.userId, fileName: file.name.slice(0, 200), fileHash } });
     for (let i = 0; i < prepared.length; i += 500) await tx.importRow.createMany({ data: prepared.slice(i, i + 500).map(row => ({ ...row, batchId: batch.id })) });
     return batch;
@@ -110,6 +112,7 @@ export async function commitImport(context: UserContext, id: string) {
   for (const row of rows) {
     try {
       const result = await serializable(async db => {
+        await requireWorkspacePremiumInDb(db, context.workspaceId, "STATEMENT_IMPORT");
         // Lock the staging row inside the same transaction that writes the journal.
         const claimed = await db.importRow.updateMany({
           where: { id: row.id, batchId: id, workspaceId: context.workspaceId, status: "VALID" },
@@ -138,6 +141,8 @@ export async function commitImport(context: UserContext, id: string) {
       });
       if (result === "IMPORTED") imported++;
     } catch (error) {
+      // An expired or suspended account must not turn a staged VALID row into FAILED.
+      if (error instanceof HttpError && ["PREMIUM_REQUIRED", "ACCOUNT_DISABLED"].includes(error.code)) throw error;
       // Serialization/unique-key races may be retried by the next request; preserve VALID.
       if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2034", "P2002"].includes(error.code)) throw error;
       await prisma.importRow.updateMany({ where: { id: row.id, workspaceId: context.workspaceId, status: "VALID" }, data: { status: "FAILED", error: error instanceof HttpError ? error.message.slice(0, 500) : "Không thể ghi dòng này; có thể thử lại." } });
@@ -156,6 +161,7 @@ export async function retryFailedImport(context: UserContext, id: string) {
   });
   if (!batch) throw new HttpError(404, "NOT_FOUND", "Không tìm thấy đợt nhập.");
   const retried = await prisma.$transaction(async tx => {
+    await requireWorkspacePremiumInDb(tx, context.workspaceId, "STATEMENT_IMPORT");
     const updated = await tx.importRow.updateMany({
       where: { batchId: id, workspaceId: context.workspaceId, status: "FAILED" },
       data: { status: "VALID", error: null },

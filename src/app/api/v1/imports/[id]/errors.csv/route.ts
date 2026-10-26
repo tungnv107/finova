@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { NextRequest } from "next/server";
-import { requireContext, HttpError } from "@/server/context";
+import { HttpError } from "@/server/context";
+import { requireStatementImportContext } from "@/server/premium";
 import { failure } from "@/server/http";
 
 const quote = (value: string) => {
@@ -10,7 +11,7 @@ const quote = (value: string) => {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { workspaceId } = await requireContext(request);
+    const { workspaceId } = await requireStatementImportContext(request);
     const id = (await params).id;
     if (!await prisma.importBatch.findFirst({ where: { id, workspaceId } })) throw new HttpError(404, "NOT_FOUND", "Không tìm thấy đợt nhập.");
     const rows = await prisma.importRow.findMany({ where: { batchId: id, workspaceId, status: { in: ["INVALID", "FAILED", "DUPLICATE"] } }, orderBy: { rowNumber: "asc" } });

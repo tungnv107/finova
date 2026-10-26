@@ -94,6 +94,12 @@ export async function limitAuthenticatedRequest(context: UserContext, request: N
   if (policy) await consumeRateLimitKey(`${context.userId}:${context.workspaceId}`, policy);
 }
 
+/** Admin handlers authorize via system roles without creating a personal workspace. */
+export async function limitSystemRequest(userId: string, request: NextRequest) {
+  const policy = policyForRequest(request);
+  if (policy) await consumeRateLimitKey(`system:${userId}`, policy);
+}
+
 export async function pruneExpiredRateLimits() {
   return prisma.apiRateLimit.deleteMany({ where: { expiresAt: { lt: new Date() } } });
 }

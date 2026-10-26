@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { HttpError, type UserContext } from "@/server/context";
 import { serializable } from "@/server/serializable";
 import { createTransactionInDb } from "@/server/ledger";
+import { premiumEnforced, requireWorkspacePremiumInDb } from "@/server/premium";
 import { bankBookingTransition, bankEnvelope, bankFingerprint, digest, openBankEvent, providerCapabilities, sealBankEvent, type BankEnvelope } from "./domain";
 import { readBankStatement, statementEnvelope, type StatementMapping } from "./statement";
 
@@ -49,6 +50,11 @@ export async function persistBankEnvelope(providerCode: "SANDBOX" | "STATEMENT_I
         (connection.consentExpiresAt && connection.consentExpiresAt <= new Date())) {
       throw new HttpError(403, "UNAUTHORIZED_BANK_ACCOUNT", "Nguồn hoặc tài khoản không được phép đồng bộ.");
     }
+    // Uploads originate from an authenticated user; validate again at inbox commit.
+    // Provider webhooks remain durable even when the owner has downgraded.
+    if (providerCode === "STATEMENT_IMPORT") {
+      await requireWorkspacePremiumInDb(db, connection.workspaceId, "STATEMENT_IMPORT");
+    }
     const key = { providerCode_connectionId_externalEventId: { providerCode, connectionId, externalEventId: input.eventId } };
     const previous = await db.bankRawEvent.findUnique({ where: key, select: { id: true, payloadHash: true } });
     if (previous) {
@@ -82,6 +88,8 @@ async function processEvent(id: string) {
       accounts: true, consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } },
     } } } });
     if (event.processingStatus === "DONE") return;
+    await requireWorkspacePremiumInDb(db, event.workspaceId,
+      event.providerCode === "STATEMENT_IMPORT" ? "STATEMENT_IMPORT" : "BANK_SYNC");
     if (event.connection.status !== "ACTIVE") throw new Error("Connection is paused or revoked.");
     const decrypted = JSON.parse(openBankEvent(event.payloadCiphertext).toString("utf8"));
     const envelope = bankEnvelope.parse(decrypted.envelope ?? decrypted);
@@ -153,7 +161,109 @@ async function processEvent(id: string) {
 }
 
 /** Durable DB-backed queue: claim by CAS, recover expired leases, bounded retries and DLQ. */
+export async function resumePremiumPausedBankEvents(limit = 20) {
+  // Existing Bank Sync installations may not have Admin/Premium migrations yet.
+  if (process.env.FINOVA_ADMIN_ENABLED !== "1") return 0;
+  const batchSize = Math.min(Math.max(1, limit), 50);
+  const enforcePremium = premiumEnforced();
+  // SQL filters inactive owners/connections/grants; encrypted account references
+  // still require inspection. Keyset pagination prevents an early page of
+  // consent-invalid events from starving valid events later in the queue.
+  // Each page has its own short transaction and locks only that page.
+  // PostgreSQL timestamps have microsecond precision; round-tripping through
+  // JavaScript Date would truncate the keyset position to milliseconds.
+  type ResumeCursor = { createdAtText: string; id: string };
+  type ResumePage = { count: number; next: ResumeCursor | null };
+  let cursor: ResumeCursor | null = null;
+  let resumed = 0;
+  while (resumed < batchSize) {
+    const afterCreatedAt: string | null = cursor?.createdAtText ?? null;
+    const afterId: string = cursor?.id ?? "";
+    const page: ResumePage = await prisma.$transaction(async (db): Promise<ResumePage> => {
+    const rows = await db.$queryRaw<{ id: string; aggregateId: string; createdAtText: string }[]>`
+      SELECT o."id", o."aggregateId", o."createdAt"::text AS "createdAtText"
+      FROM bank_sync_outbox AS o
+      JOIN bank_raw_events AS e ON e."id" = o."aggregateId"
+      JOIN bank_connections AS c ON c."id" = e."connectionId" AND c."workspaceId" = e."workspaceId"
+      JOIN "Workspace" AS w ON w."id" = e."workspaceId"
+      LEFT JOIN "UserAccessState" AS access ON access."userId" = w."createdById"
+      WHERE o."eventType" = 'BANK_EVENT'
+        AND o."status" = 'PAUSED'
+        AND e."processingStatus" = 'PAUSED'
+        AND e."lastError" IN ('PREMIUM_REQUIRED', 'ACCOUNT_DISABLED')
+        AND COALESCE(access."status"::text, 'ACTIVE') = 'ACTIVE'
+        AND c."status" = 'ACTIVE'
+        AND (c."consentExpiresAt" IS NULL OR c."consentExpiresAt" > CURRENT_TIMESTAMP)
+        AND EXISTS (
+          SELECT 1 FROM bank_consents AS consent
+          WHERE consent."connectionId" = c."id"
+            AND consent."revokedAt" IS NULL
+            AND (consent."expiresAt" IS NULL OR consent."expiresAt" > CURRENT_TIMESTAMP)
+        )
+        AND EXISTS (
+          SELECT 1 FROM bank_accounts AS account
+          WHERE account."connectionId" = c."id"
+            AND account."status" = 'ACTIVE'
+            AND account."currency" = 'VND'
+        )
+        AND (${!enforcePremium} OR EXISTS (
+          SELECT 1 FROM "SubscriptionGrant" AS g
+          WHERE g."userId" = w."createdById"
+            AND g."revokedAt" IS NULL
+            AND g."startsAt" <= CURRENT_TIMESTAMP
+            AND g."expiresAt" > CURRENT_TIMESTAMP
+        ))
+        AND (${afterCreatedAt}::timestamptz IS NULL OR (o."createdAt", o."id") > (${afterCreatedAt}::timestamptz, ${afterId}))
+      ORDER BY o."createdAt", o."id"
+      LIMIT ${(batchSize - resumed) * 10}
+      FOR UPDATE OF o SKIP LOCKED
+    `;
+    if (!rows.length) return { count: 0, next: null };
+    const last = rows[rows.length - 1];
+    const next = { createdAtText: last.createdAtText, id: last.id };
+    // A SePay connection may have several accounts but consent for only one.
+    // Account references are encrypted in each raw event, so SQL eligibility
+    // alone cannot safely decide which paused events may be resumed.
+    const events = await db.bankRawEvent.findMany({
+      where: { id: { in: rows.map(row => row.aggregateId) } },
+      select: { id: true, providerCode: true, payloadCiphertext: true, connection: {
+        select: { accounts: { where: { status: "ACTIVE", currency: "VND" }, select: { providerAccountRef: true } },
+          consents: { where: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+            select: { scopeJson: true } } },
+      } },
+    });
+    const validEventIds = new Set<string>();
+    for (const event of events) {
+      try {
+        const decoded = JSON.parse(openBankEvent(event.payloadCiphertext).toString("utf8"));
+        const envelope = bankEnvelope.parse(decoded.envelope ?? decoded);
+        if (event.connection.accounts.some(account => account.providerAccountRef === envelope.accountRef) &&
+            bankConsentAllowsAccount(event.connection.consents, event.providerCode, envelope.accountRef)) {
+          validEventIds.add(event.id);
+        }
+      } catch {
+        // Corrupt or undecryptable events stay paused for operator review.
+      }
+    }
+    const eligible = rows.filter(row => validEventIds.has(row.aggregateId)).slice(0, batchSize - resumed);
+    if (!eligible.length) return { count: 0, next };
+    const ids = eligible.map(row => row.id);
+    const eventIds = eligible.map(row => row.aggregateId);
+    const changed = await db.bankSyncOutbox.updateMany({ where: { id: { in: ids }, status: "PAUSED" },
+      data: { status: "PENDING", nextAttemptAt: new Date(), leaseUntil: null } });
+    await db.bankRawEvent.updateMany({ where: { id: { in: eventIds }, processingStatus: "PAUSED" },
+      data: { processingStatus: "PENDING", lastError: null } });
+    return { count: changed.count, next };
+    });
+    resumed += page.count;
+    cursor = page.next;
+    if (!cursor) break;
+  }
+  return resumed;
+}
+
 export async function processBankOutbox(limit = 20) {
+  await resumePremiumPausedBankEvents(limit);
   const now = new Date();
   const candidates = await prisma.bankSyncOutbox.findMany({ where: { eventType: "BANK_EVENT", nextAttemptAt: { lte: now },
     OR: [{ status: { in: ["PENDING", "RETRY"] } }, { status: "PROCESSING", leaseUntil: { lt: now } }] },
@@ -168,7 +278,14 @@ export async function processBankOutbox(limit = 20) {
       await processEvent(job.aggregateId);
       await prisma.bankSyncOutbox.update({ where: { id: job.id }, data: { status: "DONE", leaseUntil: null } });
       processed++;
-    } catch {
+    } catch (error) {
+      if (error instanceof HttpError && (error.code === "PREMIUM_REQUIRED" || error.code === "ACCOUNT_DISABLED")) {
+        await prisma.$transaction([
+          prisma.bankSyncOutbox.update({ where: { id: job.id }, data: { status: "PAUSED", leaseUntil: null } }),
+          prisma.bankRawEvent.update({ where: { id: job.aggregateId }, data: { processingStatus: "PAUSED", lastError: error.code } }),
+        ]);
+        continue;
+      }
       const attempts = job.retryCount + 1;
       await prisma.bankSyncOutbox.update({ where: { id: job.id }, data: { retryCount: attempts, status: attempts >= 5 ? "DLQ" : "RETRY",
         leaseUntil: null, nextAttemptAt: new Date(Date.now() + Math.min(3600, 2 ** attempts * 30) * 1000) } });
@@ -239,6 +356,9 @@ const reviewDecision = z.discriminatedUnion("action", [
 export async function resolveBankReview(context: UserContext, reviewId: string, raw: unknown) {
   const decision = reviewDecision.parse(raw);
   return serializable(async db => {
+    // The request may have begun while Premium was active; protect the actual
+    // ledger write against expiry or revocation during user confirmation.
+    await requireWorkspacePremiumInDb(db, context.workspaceId, "BANK_SYNC");
     const review = await db.bankReviewItem.findFirst({ where: { id: reviewId, workspaceId: context.workspaceId, status: "OPEN" },
       include: { bankTransaction: { include: { account: { include: { connection: true } }, links: true } } } });
     if (!review) throw new HttpError(404, "REVIEW_NOT_FOUND", "Không tìm thấy mục cần xác nhận.");
@@ -323,6 +443,7 @@ export async function importBankStatement(context: UserContext, file: File, mapp
   if (preview.previewToken !== expectedPreviewToken) throw new HttpError(409, "MAPPING_CHANGED", "Ánh xạ đã thay đổi sau khi xem trước; vui lòng xem trước lại.");
   if (!preview.validCount) throw new HttpError(422, "NO_VALID_ROWS", "Không có dòng hợp lệ để nhập.");
   const connection = await serializable(async db => {
+    await requireWorkspacePremiumInDb(db, context.workspaceId, "STATEMENT_IMPORT");
     const wallet = await db.wallet.findFirst({ where: { id: mapping.walletId, workspaceId: context.workspaceId,
       type: "BANK", currency: "VND", archivedAt: null } });
     if (!wallet) throw new HttpError(422, "INVALID_WALLET", "Cần chọn ví ngân hàng VND đang hoạt động.");

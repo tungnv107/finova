@@ -21,6 +21,418 @@ model User {
   memberships   Membership[]
   preferences   UserPreferences?
   workspaces    Workspace[] @relation("WorkspaceCreator")
+  systemRoles   SystemRoleAssignment[]
+  accessState   UserAccessState?
+  subscription  Subscription?
+  subscriptionGrants SubscriptionGrant[]
+  subscriptionEvents SubscriptionEvent[]
+  subscriptionActions SubscriptionActionRequest[]
+  billingOrders BillingOrder[]
+  billingOutboxes BillingOutbox[]
+  billingNotices BillingNotice[]
+  operationalAlertDeliveries BillingOperationalDelivery[]
+    usageDays     ProductUsageDaily[]
+    pageviewReceipts ProductPageviewReceipt[]
+  @@index([createdAt(sort: Desc), id(sort: Asc)])
+}
+
+enum SystemRole {
+  SUPER_ADMIN
+  ADMIN
+  FINANCE_OPERATOR
+  ANALYST
+}
+
+enum UserAccessStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum BillingPeriod {
+  MONTH
+  YEAR
+}
+
+enum BillingOrderStatus {
+  PENDING_PAYMENT
+  PAID
+  EXPIRED
+  REVIEW
+  REFUNDED
+}
+
+enum BillingReceivingStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  DISABLED
+}
+
+model SystemRoleAssignment {
+  id        String     @id @default(cuid())
+  userId    String
+  role      SystemRole
+  assignedBy String?
+  createdAt DateTime   @default(now())
+  revokedAt DateTime?
+  user      User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@index([userId, revokedAt])
+}
+
+model UserAccessState {
+  userId    String           @id
+  status    UserAccessStatus @default(ACTIVE)
+  reason    String?
+  changedBy String?
+  updatedAt DateTime         @updatedAt
+  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  actorId      String
+  action       String
+  resourceType String
+  resourceId   String
+  reason       String?
+  beforeJson   Json?
+  afterJson    Json?
+  createdAt    DateTime @default(now())
+  @@index([actorId, createdAt])
+  @@index([resourceType, resourceId, createdAt])
+}
+
+model SubscriptionPlan {
+  code        String      @id
+  displayName String
+  isActive    Boolean     @default(true)
+  prices      PlanPrice[]
+  entitlements PlanEntitlement[]
+}
+
+model PlanPrice {
+  id            String       @id @default(cuid())
+  planCode      String
+  productCode   String
+  billingPeriod BillingPeriod
+  periodCount   Int          @default(1)
+  priceVnd      Decimal      @db.Decimal(20, 0)
+  currency      String       @default("VND")
+  version       Int
+  isPublished   Boolean      @default(false)
+  publishedAt   DateTime?
+  effectiveFrom DateTime     @default(now())
+  effectiveTo   DateTime?
+  plan          SubscriptionPlan @relation(fields: [planCode], references: [code], onDelete: Restrict)
+  orders        BillingOrder[]
+  @@unique([productCode, version])
+  @@index([planCode, isPublished])
+}
+
+model PlanEntitlement {
+  id            String  @id @default(cuid())
+  planCode      String
+  featureKey    String
+  enabled       Boolean
+  policyVersion Int     @default(1)
+  plan          SubscriptionPlan @relation(fields: [planCode], references: [code], onDelete: Restrict)
+  @@unique([planCode, featureKey, policyVersion])
+}
+
+model BillingReceivingAccount {
+  id                     String   @id @default(cuid())
+  bankCode               String
+  bankName               String
+  accountName            String
+  accountNumberEncrypted String   @db.Text
+  accountNumberLast4     String
+  status                 BillingReceivingStatus @default(PENDING_APPROVAL)
+  createdBy              String
+  approvedBy             String?
+  createdAt              DateTime @default(now())
+  approvedAt             DateTime?
+  orders                 BillingOrder[]
+  @@index([status, createdAt(sort: Desc), id(sort: Desc)])
+}
+
+model BillingOrder {
+  id                    String   @id @default(cuid())
+  userId                String
+  priceId               String
+  receiverAccountId     String
+  orderCode             String   @unique
+  idempotencyKey        String
+  planCode              String
+  billingPeriodSnapshot BillingPeriod
+  periodCountSnapshot   Int
+  amountDueVnd          Decimal  @db.Decimal(20, 0)
+  currency              String   @default("VND")
+  status                BillingOrderStatus @default(PENDING_PAYMENT)
+  createdAt             DateTime @default(now())
+  expiresAt             DateTime
+  paidAt                DateTime?
+  activatedAt           DateTime?
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  price                 PlanPrice @relation(fields: [priceId], references: [id], onDelete: Restrict)
+  receiver              BillingReceivingAccount @relation(fields: [receiverAccountId], references: [id], onDelete: Restrict)
+  grant                 SubscriptionGrant?
+  allocation            PaymentAllocation?
+  outbox                 BillingOutbox?
+  notice                 BillingNotice?
+  subscriptionEvents     SubscriptionEvent[]
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
+}
+
+/// One durable notification per successfully activated order; written in the same transaction as the grant.
+model BillingOutbox {
+  id              String   @id @default(cuid())
+  orderId         String   @unique
+  userId          String
+  kind            String
+  status          String   @default("PENDING")
+  attemptCount    Int      @default(0)
+  nextAttemptAt   DateTime @default(now())
+  leaseOwner      String?
+  leaseUntil      DateTime?
+  deadLetteredAt  DateTime?
+  deliveredAt     DateTime?
+  lastErrorCode   String?
+  createdAt       DateTime @default(now())
+  order           BillingOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  notice          BillingNotice?
+  @@index([status, deadLetteredAt, nextAttemptAt])
+}
+
+/// Transactional account notice, accessible even when the user's effective plan is Lite.
+model BillingNotice {
+  id        String   @id @default(cuid())
+  outboxId  String   @unique
+  userId    String
+  orderId   String   @unique
+  kind      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  outbox    BillingOutbox @relation(fields: [outboxId], references: [id], onDelete: Restrict)
+  order     BillingOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  @@index([userId, createdAt])
+}
+
+/// One current state per signal; history preserves each open, acknowledgement,
+/// escalation and resolution across recurring incident generations.
+model BillingOperationalIncident {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  severity       String
+  title          String
+  explanation    String
+  href           String
+  count          Int
+  state          String   @default("OPEN")
+  generation     Int      @default(1)
+  openedAt       DateTime @default(now())
+  observedAt     DateTime @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  resolvedAt     DateTime?
+  escalatedAt    DateTime?
+  deliveries     BillingOperationalDelivery[]
+  history        BillingOperationalHistory[]
+  relayJobs      BillingOperationalRelay[]
+  @@index([state, openedAt])
+}
+
+/// Private in-app delivery to an eligible operator; no bank data or customer PII.
+model BillingOperationalDelivery {
+  id           String @id @default(cuid())
+  incidentId   String
+  generation   Int
+  userId       String
+  deliveredAt  DateTime @default(now())
+  readAt       DateTime?
+  incident     BillingOperationalIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  user         User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@unique([incidentId, generation, userId])
+  @@index([userId, deliveredAt(sort: Desc)])
+}
+
+model BillingOperationalHistory {
+  id         String @id @default(cuid())
+  incidentId String
+  generation Int
+  action     String
+  actorId    String?
+  at         DateTime @default(now())
+  incident   BillingOperationalIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  @@index([incidentId, at])
+}
+
+/// Retryable handoff to an independently hosted operator alert relay.
+model BillingOperationalRelay {
+  id            String @id @default(cuid())
+  incidentId    String
+  generation    Int
+  phase         String
+  audience      String
+  state         String @default("PENDING")
+  attempts      Int @default(0)
+  nextAttemptAt DateTime @default(now())
+  leaseOwner    String?
+  leaseUntil    DateTime?
+  deliveredAt   DateTime?
+  deadLetterAt  DateTime?
+  lastErrorCode String?
+  createdAt     DateTime @default(now())
+  incident      BillingOperationalIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict)
+  @@unique([incidentId, generation, phase])
+  @@index([state, nextAttemptAt])
+}
+
+/// Independent, configured provider status probe (separate from payment/IPN traffic).
+model BillingProviderProbe {
+  id                  String @id
+  status              String @default("UNKNOWN")
+  consecutiveFailures Int @default(0)
+  checkedAt           DateTime?
+  lastSuccessAt       DateTime?
+}
+
+model BillingPaymentEvent {
+  id                    String   @id @default(cuid())
+  provider              String
+  providerAccountRef    String
+  providerTransactionId String
+  direction             String
+  amountVnd             Decimal  @db.Decimal(20, 0)
+  reference             String
+  occurredAt            DateTime
+  receivedAt            DateTime @default(now())
+  verificationStatus    String
+  matchStatus           String
+    attemptCount          Int      @default(0)
+    nextAttemptAt         DateTime @default(now())
+    leaseOwner            String?
+    leaseUntil            DateTime?
+    deadLetteredAt        DateTime?
+    lastErrorCode         String?
+  allocation            PaymentAllocation?
+  @@unique([provider, providerAccountRef, providerTransactionId])
+    @@index([provider, verificationStatus, matchStatus, deadLetteredAt, nextAttemptAt])
+}
+
+  /// Aggregate-only product analytics. No financial amounts, URLs, query strings or IP addresses.
+  model ProductUsageDaily {
+    userId      String
+    dayVn       DateTime @db.Date
+    pageViews   Int      @default(0)
+    firstSeenAt DateTime
+    lastSeenAt  DateTime
+    user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    @@id([userId, dayVn])
+    @@index([dayVn])
+  }
+
+  /// Short-lived idempotency receipts to avoid double counting StrictMode and HTTP retries.
+  model ProductPageviewReceipt {
+    userId       String
+    navigationId String
+    routeGroup   String
+    createdAt    DateTime @default(now())
+    user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+    @@id([userId, navigationId])
+    @@index([createdAt])
+  }
+
+model PaymentAllocation {
+  id             String @id @default(cuid())
+  paymentEventId String @unique
+  orderId        String @unique
+  amountVnd      Decimal @db.Decimal(20, 0)
+  matchedAt      DateTime @default(now())
+  paymentEvent   BillingPaymentEvent @relation(fields: [paymentEventId], references: [id], onDelete: Restrict)
+  order          BillingOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+}
+
+model Subscription {
+  userId                String   @id
+  planCode              String   @default("LITE")
+  startsAt              DateTime?
+  expiresAt             DateTime?
+  billingAnniversaryDay Int?
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+}
+
+model SubscriptionGrant {
+  id            String @id @default(cuid())
+  userId        String
+  orderId       String? @unique
+  grantType     String
+  billingPeriod BillingPeriod?
+  periodCount   Int?
+  startsAt      DateTime
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  createdAt     DateTime @default(now())
+  createdBy     String?
+  reason        String?
+  user          User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order         BillingOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  events        SubscriptionEvent[]
+  actionRequests SubscriptionActionRequest[]
+  @@index([userId, startsAt, expiresAt])
+}
+
+/// Two-person, expiring authorization for non-cash Premium adjustments.
+/// A proposed action never changes an entitlement until a separate reviewer approves it.
+model SubscriptionActionRequest {
+  id             String   @id @default(cuid())
+  userId         String
+  kind           String
+  status         String   @default("PENDING")
+  grantId        String?
+  billingPeriod  BillingPeriod?
+  periodCount    Int?
+  reason         String
+  requestedBy    String
+  idempotencyKey String
+  reviewedBy     String?
+  reviewReason   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime @default(now())
+  expiresAt      DateTime
+  user           User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  grant          SubscriptionGrant? @relation(fields: [grantId], references: [id], onDelete: Restrict)
+  events         SubscriptionEvent[]
+  @@unique([requestedBy, idempotencyKey])
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+}
+
+/// Append-only domain history for grant lifecycle; the payment-activation event is
+/// committed with allocation, grant, order and notification outbox.
+model SubscriptionEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  grantId   String
+  orderId   String?
+  kind      String
+  actionRequestId String? @unique
+  actorId   String?
+  reason    String?
+  startsAt  DateTime?
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+  user      User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  grant     SubscriptionGrant @relation(fields: [grantId], references: [id], onDelete: Restrict)
+  order     BillingOrder? @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  actionRequest SubscriptionActionRequest? @relation(fields: [actionRequestId], references: [id], onDelete: Restrict)
+  @@unique([grantId, kind])
+  @@unique([orderId, kind])
+  @@index([userId, createdAt])
+  @@index([createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model Session {

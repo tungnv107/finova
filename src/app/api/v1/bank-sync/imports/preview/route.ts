@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
-import { requireContext, HttpError } from "@/server/context";
+import { HttpError } from "@/server/context";
+import { requireBankSyncContext } from "@/server/premium";
 import { assertSameOrigin, failure, limitedFormData, respond } from "@/server/http";
 import { readBankStatement } from "@/modules/bank-sync/statement";
 
 export async function POST(request: NextRequest) {
   try {
     assertSameOrigin(request);
-    await requireContext(request);
+    await requireBankSyncContext(request);
     const form = await limitedFormData(request, 6 * 1024 * 1024);
     const file = form.get("file"), mapping = form.get("mapping");
     if (!(file instanceof File) || typeof mapping !== "string") throw new HttpError(400, "INVALID_FILE", "Thiếu tệp/ánh xạ sao kê.");

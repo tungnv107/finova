@@ -38,6 +38,8 @@ const nextConfig: NextConfig = {
     return webpackConfig;
   },
   experimental: {
+    // Required to return HTTP 403 for denied admin pages (Next.js 16).
+    authInterrupts: true,
     cpus: process.platform === "win32" ? 1 : 2,
     // Serialize Windows prerender writes to avoid intermittent EPERM mkdir.
     staticGenerationMaxConcurrency: process.platform === "win32" ? 1 : 8,

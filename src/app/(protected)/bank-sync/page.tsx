@@ -1,4 +1,4 @@
-import { requirePageContext } from "@/server/page-context";
+import { requirePageContext, requirePremiumPage } from "@/server/page-context";
 import { prisma } from "@/lib/db";
 import { listBankConnections, listBankReviews } from "@/modules/bank-sync/service";
 import { isSandboxEnabled } from "@/modules/bank-sync/domain";
@@ -7,6 +7,7 @@ import { BankSyncManager } from "@/components/bank-sync-manager";
 
 export default async function BankSyncPage() {
   const context = await requirePageContext();
+  await requirePremiumPage(context.userId, "BANK_SYNC");
   const defaultCutoverDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const [wallets, categories, connections, reviews, sources, transactions] = await Promise.all([
     prisma.wallet.findMany({ where: { workspaceId: context.workspaceId, archivedAt: null }, select: { id: true, name: true, type: true }, orderBy: { name: "asc" } }),

@@ -3,9 +3,13 @@ import { cycleDates, localDay } from "@/lib/dates";
 import { Decimal } from "@/lib/money";
 import { HttpError } from "@/server/context";
 import { listCreditCards } from "@/server/credit-cards";
+import { requireWorkspacePremium } from "@/server/premium";
+import { requireWorkspacePremiumInDb } from "@/server/premium";
+import { serializable } from "@/server/serializable";
 
 // Persisted keys prevent duplicate reminders across repeated visits/jobs.
 export async function reconcileNotifications(workspaceId: string, now = new Date()) {
+  await requireWorkspacePremium(workspaceId, "NOTIFICATIONS");
   const today = localDay(now);
   const coming = localDay(new Date(now.getTime() + 7 * 86400_000));
   const [occurrences, debts, cards, alerts] = await Promise.all([
@@ -29,9 +33,14 @@ export async function reconcileNotifications(workspaceId: string, now = new Date
   }
   for (const alert of alerts) notifications.push({ key: `budget:${alert.id}`, title: "Ngân sách đạt ngưỡng",
     body: `${alert.budget.name}: ${alert.threshold === "OVER100" ? ">100" : alert.threshold.slice(1)}%.`, link: "/budgets" });
-  for (const n of notifications) {
-    await prisma.notification.upsert({ where: { workspaceId_key: { workspaceId, key: n.key } }, create: { workspaceId, ...n }, update: {} });
-  }
+  if (!notifications.length) return 0;
+  await serializable(async db => {
+    // Entitlement may expire while the preceding queries calculate reminders.
+    await requireWorkspacePremiumInDb(db, workspaceId, "NOTIFICATIONS");
+    for (const n of notifications) {
+      await db.notification.upsert({ where: { workspaceId_key: { workspaceId, key: n.key } }, create: { workspaceId, ...n }, update: {} });
+    }
+  });
   return notifications.length;
 }
 

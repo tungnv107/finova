@@ -1,8 +1,12 @@
 # Finova — Kế hoạch triển khai đồng bộ sao kê ngân hàng
 
-**Cập nhật:** 23/10/2026 · **Nguồn yêu cầu:** [Đặc tả đồng bộ sao kê](FINOVA_DONG_BO_SAO_KE_NGAN_HANG_DESIGN.md), Phần VI.
+**Cập nhật:** 24/10/2026 · **Nguồn yêu cầu:** [Đặc tả đồng bộ sao kê](FINOVA_DONG_BO_SAO_KE_NGAN_HANG_DESIGN.md), Phần VI.
 **Trạng thái:** Đang triển khai (**9/45 nhiệm vụ đã nghiệm thu**); **chưa đủ điều kiện phát hành kết nối ngân hàng thật**.
 **Quy tắc nghiệm thu:** `[x]` chỉ khi phần việc được thực hiện và đã có kiểm tra phù hợp; `[ ]` là còn thiếu triển khai, kiểm thử hoặc điều kiện nghiệm thu. Không suy diễn việc schema hợp lệ thành migration đã áp dụng.
+
+**QA bổ sung 24/10/2026 — chống starvation của resume:** `resumePremiumPausedBankEvents()` dùng keyset pagination theo thời điểm PostgreSQL chính xác microsecond, xử lý từng trang trong transaction riêng và khóa outbox `SKIP LOCKED`. PostgreSQL integration kiểm chứng **22 sự kiện SePay sai phạm vi consent xếp trước** không cản trở sự kiện hợp lệ với `limit=1`, và không sự kiện không hợp lệ nào bị resume. Admin/Premium integration và Bank Sync **36/36 PASS**; unit **363/363**, typecheck/lint/Prisma/API audit, production build **54/54 PASS**. Đây là QA bổ sung, không đóng BS2-08/BS4-07/BS4-08; **9/45 task `[x]`**; cần DB outage/restore, financial regression và UAT provider.
+
+**Checkpoint QA 24/10/2026:** `finova_test` **36/36 PostgreSQL scenarios PASS**, Admin/Premium DB integration **PASS** trên DB riêng; `resumePremiumPausedBankEvents()` bổ sung đối chiếu `accountRef` sau giải mã encrypted raw event với account ACTIVE/VND và consent chính xác, giữ PAUSED cho sự kiện sai phạm vi. Test mới xác minh hai tài khoản SePay một consent và resume từ hai worker đồng thời. Unit **363/363** (62 files), TypeScript, lint, Prisma validate, API guard audit **73/90**, production build **54/54 pages PASS**. QA hardening đã nghiệm thu; task Bank Sync vẫn **9/45**, SePay **13 [x]**. Outage/recovery DB, provider UAT, Google browser và staging chưa đạt; **Production/SePay Live NO-GO**.
 
 **Checkpoint hiện hành 23/10/2026 — authenticated manual sync:** `finova_test` **36/36 integration PASS** (signed Better Auth cookie, same-origin/CSRF, wrong tenant, consent revoke, idempotency, review-first), **16/16 migrations**; unit **320/320**, typecheck/lint/Prisma validate/API guard audit và build PASS. SePay **SP3-02 [x]**, tổng **13 task [x]**; Bank Sync giữ **9/45 [x]** do các acceptance rộng hơn còn mở. Lượt stress chạy đồng thời từng ghi nhận 1 retry; lượt integration độc lập đạt 36/36. npm audit chưa trả báo cáo đầy đủ; Google OAuth browser, outage/recovery DB, SePay UAT và staging còn thiếu. **Production/SePay Live NO-GO**. Mốc 31/31 ở phía dưới là lịch sử.
 

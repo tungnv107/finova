@@ -1,13 +1,14 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { requireContext, HttpError } from "@/server/context";
+import { HttpError } from "@/server/context";
+import { requireBankSyncContext } from "@/server/premium";
 import { assertSameOrigin, failure, readJsonBody, respond } from "@/server/http";
 import { serializable } from "@/server/serializable";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     assertSameOrigin(request);
-    const context = await requireContext(request);
+    const context = await requireBankSyncContext(request);
     const { id } = await params;
     const { action } = z.object({ action: z.enum(["PAUSE", "RESUME", "REVOKE"]) }).strict().parse(await readJsonBody(request));
     const result = await serializable(async db => {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { HttpError, type UserContext } from "@/server/context";
 import { serializable } from "@/server/serializable";
+import { requireWorkspacePremiumInDb } from "@/server/premium";
 import { providerCapabilities } from "../domain";
 import { bankConsentAllowsAccount, persistBankEnvelope } from "../service";
 import { mapSePayHistory } from "./mapper";
@@ -148,6 +149,8 @@ export async function refreshSePayAccountStatuses(context: UserContext, connecti
 
 /** The inclusive date overlap is deliberate: stable IDs dedupe IPN and paged history. */
 export async function syncSePayHistory(context: UserContext, connectionId: string, rawFrom: string, rawTo: string) {
+  const { requireWorkspacePremium } = await import("@/server/premium");
+  await requireWorkspacePremium(context.workspaceId, "BANK_SYNC");
   const from = date.parse(rawFrom), to = date.parse(rawTo);
   const start = Date.parse(`${from}T00:00:00+07:00`), end = Date.parse(`${to}T00:00:00+07:00`);
   if (end < start || end - start > 31 * 86_400_000 || end > Date.now() + 86_400_000) {
@@ -173,6 +176,7 @@ export async function syncSePayHistory(context: UserContext, connectionId: strin
   // connection concurrently. Reclaim expired jobs after a worker crash.
   const job = await serializable(async db => {
     const now = new Date();
+    await requireWorkspacePremiumInDb(db, context.workspaceId, "BANK_SYNC", now);
     const current = await db.bankConnection.findFirst({ where: { id: connectionId, workspaceId: context.workspaceId,
       status: "ACTIVE", OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gt: now } }],
       consents: { some: { revokedAt: null,
@@ -197,8 +201,10 @@ export async function syncSePayHistory(context: UserContext, connectionId: strin
   // A lease is checked after external I/O as well as during row ingestion.
   // An old worker cannot complete after a replacement claims its expired job.
   async function heartbeat() {
+    await requireWorkspacePremium(context.workspaceId, "BANK_SYNC");
     await serializable(async db => {
       const now = new Date();
+      await requireWorkspacePremiumInDb(db, context.workspaceId, "BANK_SYNC", now);
       const connection = await db.bankConnection.findFirst({ where: { id: connectionId, workspaceId: context.workspaceId,
         status: "ACTIVE", OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gt: now } }],
         consents: { some: { revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } } },
@@ -234,6 +240,9 @@ export async function syncSePayHistory(context: UserContext, connectionId: strin
     }
     await serializable(async db => {
       const now = new Date();
+      // Provider I/O can outlive a subscription or an admin suspension. The
+      // final watermark must be authorized in the same transaction as DONE.
+      await requireWorkspacePremiumInDb(db, context.workspaceId, "BANK_SYNC", now);
       const current = await db.bankConnection.findFirst({ where: { id: connectionId, workspaceId: context.workspaceId,
         status: "ACTIVE", OR: [{ consentExpiresAt: null }, { consentExpiresAt: { gt: now } }] },
       select: { accounts: { where: { status: "ACTIVE", walletId: { not: null } },
@@ -278,6 +287,14 @@ export async function pollActiveSePayConnections() {
     select: { id: true, workspaceId: true, lastSyncedAt: true }, orderBy: { lastSyncedAt: "asc" }, take: 5 });
   let processed = 0, failed = 0;
   for (const connection of targets) {
+    const { requireWorkspacePremium } = await import("@/server/premium");
+    try { await requireWorkspacePremium(connection.workspaceId, "BANK_SYNC"); }
+    catch (error) {
+      // A suspended owner must not abort polling for unrelated workspaces.
+      if (error instanceof HttpError &&
+          (error.code === "PREMIUM_REQUIRED" || error.code === "ACCOUNT_DISABLED")) continue;
+      throw error;
+    }
     const existing = await prisma.bankSyncJob.findFirst({ where: { connectionId: connection.id, type: "SEPAY_HISTORY", status: "RUNNING",
       leaseUntil: { gt: new Date() } }, select: { id: true } });
     if (existing) continue;

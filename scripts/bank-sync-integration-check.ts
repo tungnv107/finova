@@ -432,6 +432,72 @@ async function main() {
       await prisma.bankConsent.updateMany({ where: { connectionId: partnerConnection.id,
         scopeJson: { path: ["bankAccountXid"], equals: partnerAccount } }, data: { revokedAt: null } });
       ok("Account-level consent revocation during history I/O blocks that account despite another active consent");
+
+      // Real PostgreSQL transactions must recheck a workspace owner's Premium
+      // grant after the HTTP boundary, including mid-flight revoke and expiry.
+      const entitlementFlags = {
+        admin: process.env.FINOVA_ADMIN_ENABLED,
+        enforced: process.env.FINOVA_PREMIUM_ENTITLEMENTS_ENFORCED,
+      };
+      let entitlementGrantId: string | undefined;
+      process.env.FINOVA_ADMIN_ENABLED = "1";
+      process.env.FINOVA_PREMIUM_ENTITLEMENTS_ENFORCED = "1";
+      try {
+        const jobCountBeforeLite = await prisma.bankSyncJob.count({ where: { connectionId: partnerConnection.id } });
+        await assert.rejects(syncSePayHistory(a.context, partnerConnection.id, "2026-10-21", "2026-10-22"),
+          (error: unknown) => error instanceof Error && "code" in error && error.code === "PREMIUM_REQUIRED");
+        assert.equal(await prisma.bankSyncJob.count({ where: { connectionId: partnerConnection.id } }), jobCountBeforeLite);
+        ok("Lite cannot claim a SePay history job when Premium enforcement is enabled");
+
+        const grant = await prisma.subscriptionGrant.create({ data: {
+          userId: a.context.userId, grantType: "MANUAL", startsAt: new Date(Date.now() - 2 * 3600_000),
+          expiresAt: new Date(Date.now() + 3600_000), reason: "Synthetic Bank Sync entitlement test",
+        } });
+        entitlementGrantId = grant.id;
+        const beforeLedger = await prisma.journal.count({ where: { workspaceId: a.context.workspaceId } });
+        const beforeRaw = await prisma.bankRawEvent.count({ where: { connectionId: partnerConnection.id } });
+        const premiumRun = await syncSePayHistory(a.context, partnerConnection.id, "2026-10-21", "2026-10-22");
+        assert.deepEqual({ accepted: premiumRun.accepted, duplicates: premiumRun.duplicates }, { accepted: 0, duplicates: 2 });
+        ok("Active Premium can sync with two authorized accounts without duplicating bank history");
+
+        for (const mode of ["revoke", "expire"] as const) {
+          const watermarkBefore = (await prisma.bankConnection.findUniqueOrThrow({
+            where: { id: partnerConnection.id }, select: { lastSyncedAt: true },
+          })).lastSyncedAt;
+          pauseNextFirstPage();
+          const running = syncSePayHistory(a.context, partnerConnection.id, "2026-10-21", "2026-10-22");
+          try {
+            await firstPageEntered;
+            await prisma.subscriptionGrant.update({ where: { id: grant.id }, data: mode === "revoke"
+              ? { revokedAt: new Date() } : { expiresAt: new Date(Date.now() - 60_000) } });
+          } finally { releaseFirstPage?.(); }
+          await assert.rejects(running,
+            (error: unknown) => error instanceof Error && "code" in error && error.code === "PREMIUM_REQUIRED");
+          const failed = await prisma.bankSyncJob.findFirstOrThrow({ where: {
+            connectionId: partnerConnection.id, type: "SEPAY_HISTORY", status: "FAILED",
+          }, orderBy: { startedAt: "desc" } });
+          assert.equal(failed.failureReason, "PREMIUM_REQUIRED");
+          const watermarkAfter = (await prisma.bankConnection.findUniqueOrThrow({
+            where: { id: partnerConnection.id }, select: { lastSyncedAt: true },
+          })).lastSyncedAt;
+          assert.equal(watermarkAfter?.getTime(), watermarkBefore?.getTime());
+          assert.equal(await prisma.bankRawEvent.count({ where: { connectionId: partnerConnection.id } }), beforeRaw);
+          assert.equal(await prisma.journal.count({ where: { workspaceId: a.context.workspaceId } }), beforeLedger);
+          ok(`Premium ${mode} during provider I/O fails the job without changing watermark or ledger`);
+          await prisma.subscriptionGrant.update({ where: { id: grant.id }, data: {
+            revokedAt: null, expiresAt: new Date(Date.now() + 3600_000),
+          } });
+        }
+        const recoveredPremium = await syncSePayHistory(a.context, partnerConnection.id, "2026-10-21", "2026-10-22");
+        assert.deepEqual({ accepted: recoveredPremium.accepted, duplicates: recoveredPremium.duplicates }, { accepted: 0, duplicates: 2 });
+        ok("Restored Premium entitlement can retry safely after failed in-flight jobs");
+      } finally {
+        if (entitlementFlags.admin === undefined) delete process.env.FINOVA_ADMIN_ENABLED;
+        else process.env.FINOVA_ADMIN_ENABLED = entitlementFlags.admin;
+        if (entitlementFlags.enforced === undefined) delete process.env.FINOVA_PREMIUM_ENTITLEMENTS_ENFORCED;
+        else process.env.FINOVA_PREMIUM_ENTITLEMENTS_ENFORCED = entitlementFlags.enforced;
+        if (entitlementGrantId) await prisma.subscriptionGrant.delete({ where: { id: entitlementGrantId } });
+      }
     } finally {
       globalThis.fetch = originalFetch;
       if (historyEnv.enabled === undefined) delete process.env.FINOVA_SEPAY_BANKHUB_ENABLED;

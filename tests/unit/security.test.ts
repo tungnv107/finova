@@ -7,6 +7,11 @@ import { failure } from "@/server/http";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+/** Context-based Premium guards and system-role guards also authenticate requests. */
+const hasAuthenticatedRequestGuard = (handler: string) =>
+  /require(?:Context|StatementImportContext|BankSyncContext|NotificationsContext)\(request\)/.test(handler) ||
+  /requireSystemRole\([^)]*,\s*request(?:,\s*\{[^}]*\})?\s*\)/.test(handler);
+
 describe("origin validation", () => {
   it("accepts only the exact configured browser origin", () => {
     const expected = "https://finance.example.com";
@@ -47,6 +52,7 @@ describe("API policies", () => {
     expect(classify("/api/v1/reports/overview", "GET")).toBe("report");
     expect(classify("/api/v1/reports/heatmap", "GET")).toBe("report");
     expect(classify("/api/v1/transactions", "GET")).toBe("report");
+    expect(classify("/api/v1/admin/billing/notices/a/requeue", "POST")).toBe("mutation");
     expect(classify("/api/v1/wallets", "GET")).toBeNull();
     expect(RATE_LIMITS.upload).toBeLessThan(RATE_LIMITS.mutation);
   });
@@ -74,6 +80,13 @@ describe("API policies", () => {
     expect(response.headers.get("Retry-After")).toBe("7");
     expect(response.headers.get("Cache-Control")).toContain("no-store");
   });
+  it("enforces shared PostgreSQL quotas through both delegated Premium and Admin guards", () => {
+    const server = join(process.cwd(), "src", "server");
+    expect(readFileSync(join(server, "premium.ts"), "utf8")).toContain("requireContext(request)");
+    expect(readFileSync(join(server, "context.ts"), "utf8")).toContain("limitAuthenticatedRequest(context, request)");
+    expect(readFileSync(join(server, "system-auth.ts"), "utf8")).toContain("limitSystemRequest(session.user.id, request)");
+    expect(readFileSync(join(server, "rate-limit.ts"), "utf8")).toContain("consumeRateLimitKey(`system:${userId}`, policy)");
+  });
   it("requires shared read throttling for every reporting GET and CSV error export", () => {
     const root = join(process.cwd(), "src", "app", "api", "v1");
     const directories = [join(root, "reports"), join(root, "transactions"), join(root, "imports")];
@@ -87,7 +100,7 @@ describe("API policies", () => {
           if (!relative.startsWith("/reports/") && relative !== "/transactions/route.ts" && !relative.endsWith("/errors.csv/route.ts")) continue;
           const source = readFileSync(full, "utf8");
           const get = source.match(/export async function GET\([^]*?(?=export async function |$)/)?.[0];
-          expect(get, full).toContain("requireContext(request)");
+          expect(hasAuthenticatedRequestGuard(get ?? ""), `${full}: missing authenticated rate-limited guard`).toBe(true);
         }
       }
       inspect(directory);
@@ -104,7 +117,7 @@ describe("API policies", () => {
         for (const part of parts) {
           if (!/^export async function (POST|PUT|PATCH|DELETE)\(/.test(part)) continue;
           expect(part, `${full}: missing Origin guard`).toContain("assertSameOrigin(request)");
-          expect(part, `${full}: missing shared rate limit`).toContain("requireContext(request)");
+          expect(hasAuthenticatedRequestGuard(part), `${full}: missing authenticated rate-limited guard`).toBe(true);
         }
       }
     }

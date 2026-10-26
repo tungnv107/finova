@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { requireContext } from "@/server/context";
+import { requireBankSyncContext } from "@/server/premium";
 import { failure, respond } from "@/server/http";
 import { prisma } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
-    const context = await requireContext(request);
+    const context = await requireBankSyncContext(request);
     const items = await prisma.bankTransaction.findMany({ where: { workspaceId: context.workspaceId },
       orderBy: { occurredAt: "desc" }, take: 50, include: { account: { select: { accountMasked: true,
         connection: { select: { providerCode: true } } } }, links: { select: { transactionId: true } } } });

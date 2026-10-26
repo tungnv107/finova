@@ -23,6 +23,9 @@ export async function bootstrapPersonalWorkspace(user: { id: string; name: strin
     }
   }
   if (!preferences) await prisma.userPreferences.createMany({ data: [{ userId: user.id }], skipDuplicates: true });
+  if (process.env.FINOVA_ADMIN_ENABLED === "1") {
+    await prisma.subscription.createMany({ data: [{ userId: user.id, planCode: "LITE" }], skipDuplicates: true });
+  }
   await seedCategories(workspaceId);
   return workspaceId;
 }

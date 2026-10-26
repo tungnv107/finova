@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
-import { requireContext, HttpError } from "@/server/context";
+import { HttpError } from "@/server/context";
+import { requireStatementImportContext } from "@/server/premium";
 import { assertSameOrigin, failure, respond, limitedFormData } from "@/server/http";
 import { previewImport } from "@/server/imports";
 
 export async function POST(request: NextRequest) {
   try {
     assertSameOrigin(request);
-    const context = await requireContext(request);
+    const context = await requireStatementImportContext(request);
     const form = await limitedFormData(request, 6 * 1024 * 1024);
     const file = form.get("file");
     const options = form.get("options");

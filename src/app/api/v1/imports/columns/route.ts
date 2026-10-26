@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { requireContext } from "@/server/context";
+import { requireStatementImportContext } from "@/server/premium";
 import { assertSameOrigin, failure, limitedFormData, respond } from "@/server/http";
 import { parseImportFile } from "@/lib/import-files";
 import { HttpError } from "@/server/context";
@@ -7,7 +7,7 @@ import { HttpError } from "@/server/context";
 export async function POST(request: NextRequest) {
   try {
     assertSameOrigin(request);
-    await requireContext(request);
+    await requireStatementImportContext(request);
     const form = await limitedFormData(request, 6 * 1024 * 1024);
     const file = form.get("file");
     if (!(file instanceof File)) throw new HttpError(400, "INVALID_FILE", "Chưa chọn tệp.");

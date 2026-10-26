@@ -55,14 +55,14 @@ function NavSection({ title, id, items, icon: Icon }: { title: string; id: strin
   </section>;
 }
 
-export function NavLinks() {
+export function NavLinks({ utilitiesEnabled = true }: { utilitiesEnabled?: boolean }) {
   return <div className="nav-sections">
     <div className="nav-caption">THƯỜNG DÙNG</div>
     <NavGroup items={primary} />
     <div className="nav-divider" />
     <NavSection id="nav-planning" title="Kế hoạch" icon={ChartPie} items={planning} />
     <NavSection id="nav-management" title="Quản lý tài chính" icon={Wallet} items={management} />
-    <NavSection id="nav-utilities" title="Công cụ & thông báo" icon={SlidersHorizontal} items={more} />
+    {utilitiesEnabled && <NavSection id="nav-utilities" title="Công cụ & thông báo" icon={SlidersHorizontal} items={more} />}
   </div>;
 }
 
