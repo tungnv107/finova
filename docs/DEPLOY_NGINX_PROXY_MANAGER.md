@@ -165,6 +165,17 @@ docker compose -f compose.yaml -f compose.npm.yaml --profile release run --rm mi
 
 Lưu ý: lệnh cuối sử dụng môi trường migration và chỉ truy vấn trạng thái schema. Kiểm thử **đăng nhập Google thật**, phiên người dùng, truy cập và giao dịch đã xác thực, reverse proxy, chính sách bảo mật và giám sát riêng trước khi chuyển lưu lượng production. Các tính năng Admin/Premium/Billing tiếp tục mặc định tắt trong `.env`; Docker Compose nay truyền đầy đủ các flag cấu hình. Chỉ bật khi đã hoàn thành điều kiện UAT/phân quyền/nhà cung cấp trong [payment runbook](FINOVA_ADMIN_PREMIUM_PAYMENT_RUNBOOK.md).
 
+### Cấp quyền Super Admin đầu tiên theo email đã xác minh
+
+Đăng nhập Google vào Finova **trước** bằng đúng email cần cấp quyền, bảo đảm người dùng đã tồn tại trong database đích và `emailVerified=true`. Trên máy chủ, sử dụng image `migrate` được build từ commit mới nhất và chỉ chạy với `FINOVA_MIGRATION_DATABASE_URL` đã được xác thực:
+
+```bash
+docker compose -f compose.yaml -f compose.npm.yaml --profile release run --rm migrate \
+  npm run admin:bootstrap -- --email 'your-verified-google-email@example.com'
+```
+
+Tùy chọn `--email` tra cứu chính xác cột `User.email` (duy nhất), chỉ cấp khi đã xác minh, ghi audit trong transaction và từ chối khi đã có Super Admin hoạt động. Có thể thay `--email <...>` bằng User ID trong lệnh cũ. Không tự tạo sẵn một email/quyền mặc định trong seed hoặc repo. Đặt `FINOVA_ADMIN_ENABLED=1` trong `.env` và tái tạo app container (`--profile app up -d --no-build app`); các cờ thanh toán tiếp tục tắt. Quyền được cấp trực tiếp trong PostgreSQL của môi trường đã chọn và không tự lan sang môi trường khác.
+
 Nếu phát hành lỗi sau migration, trước tiên kiểm tra trạng thái container, logs, `prisma migrate status` và backup/checksum. Script lưu image cũ với tag `finova:rollback-<UTC timestamp>`. **Chỉ** quay lại image đó sau khi đã xác nhận schema mới tương thích image cũ; migration của Prisma mặc định không có thao tác rollback. Tránh `docker compose down -v`, `prisma migrate reset` hoặc khôi phục dữ liệu đè production: có thể mất giao dịch mới.
 
 ### Thao tác thủ công (khi cần tách từng bước)

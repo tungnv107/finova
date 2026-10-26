@@ -7,9 +7,9 @@ function check(condition: unknown, description: string): asserts condition {
   if (!condition) throw new Error(`BOOTSTRAP_ASSERTION_FAILED: ${description}`);
 }
 
-async function runBootstrap(userId: string) {
+async function runBootstrap(...args: string[]) {
   const child = spawn(process.execPath, ["--env-file-if-exists=.env", "--import", "tsx",
-    "scripts/bootstrap-finova-super-admin.ts", userId], {
+    "scripts/bootstrap-finova-super-admin.ts", ...args], {
     cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"],
   });
   let stdout = "";
@@ -41,10 +41,19 @@ async function main() {
     const rejected = await runBootstrap(unverified);
     check(rejected.code !== 0 && rejected.output.includes("email has not been verified"),
       "unverified account cannot obtain the first Super Admin role");
+    const rejectedEmail = await runBootstrap("--email", `${unverified}@example.test`);
+    check(rejectedEmail.code !== 0 && rejectedEmail.output.includes("email has not been verified"),
+      "unverified email cannot obtain the first Super Admin role");
+    const missingEmail = await runBootstrap("--email", "nonexistent@example.test");
+    check(missingEmail.code !== 0 && missingEmail.output.includes("Target user not found"),
+      "nonexistent email cannot obtain the first Super Admin role");
+    const invalidEmail = await runBootstrap("--email", "not-an-email");
+    check(invalidEmail.code !== 0 && invalidEmail.output.includes("Usage:"),
+      "malformed email cannot obtain the first Super Admin role");
     check((await prisma.systemRoleAssignment.count({ where: { role: "SUPER_ADMIN", revokedAt: null } })) === 0,
       "rejected bootstrap does not write a role");
 
-    const attempts = await Promise.all([runBootstrap(verifiedA), runBootstrap(verifiedB)]);
+    const attempts = await Promise.all([runBootstrap(verifiedA), runBootstrap("--email", `${verifiedB}@example.test`)]);
     check(attempts.filter(result => result.code === 0).length === 1,
       "exactly one concurrent bootstrap succeeds");
     const roles = await prisma.systemRoleAssignment.findMany({
@@ -61,9 +70,12 @@ async function main() {
     const repeated = await runBootstrap(roles[0].userId === verifiedA ? verifiedB : verifiedA);
     check(repeated.code !== 0 && repeated.output.includes("A Super Admin already exists"),
       "bootstrap refuses a second privileged assignment");
+    const repeatedEmail = await runBootstrap("--email", `${verifiedA}@example.test`);
+    check(repeatedEmail.code !== 0 && repeatedEmail.output.includes("A Super Admin already exists"),
+      "email bootstrap also refuses a second privileged assignment");
     check((await prisma.systemRoleAssignment.count({ where: { role: "SUPER_ADMIN", revokedAt: null } })) === 1,
       "retries cannot grant another Super Admin role");
-    console.log("PASS: Super Admin bootstrap denies unverified users, allows one concurrent first grant, audits it and rejects subsequent grants.");
+    console.log("PASS: Super Admin bootstrap by ID/email denies unverified or missing users, allows one concurrent first grant, audits it and rejects subsequent grants.");
   } finally {
     await prisma.systemRoleAssignment.deleteMany({ where: { userId: { in: ids } } });
     await prisma.adminAuditLog.deleteMany({ where: { resourceType: "USER", resourceId: { in: ids }, action: "ROLE_ASSIGN" } });
