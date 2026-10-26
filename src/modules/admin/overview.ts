@@ -14,13 +14,15 @@ export async function getAdminOverview(role: SystemRole) {
   const billing = { pendingOrders, totalOrders, paidOrders,
     collectedVnd: Number(paidValue._sum.amountVnd ?? 0) };
   if (role === "FINANCE_OPERATOR") return { scope: "FINANCE" as const, ...billing };
-  const [totalUsers, newUsers30d, premiumUsers] = await Promise.all([
+  const [totalUsers, newUsers30d, premiumUsers, superAdminIds] = await Promise.all([
     prisma.user.count(), prisma.user.count({ where: { createdAt: { gte: start } } }),
     prisma.subscriptionGrant.groupBy({ by: ["userId"], where: { startsAt: { lte: now }, expiresAt: { gt: now }, revokedAt: null } }),
+    prisma.systemRoleAssignment.findMany({ where: { role: "SUPER_ADMIN", revokedAt: null }, select: { userId: true } }),
   ]);
+  const premiumCount = new Set([...premiumUsers.map(u => u.userId), ...superAdminIds.map(u => u.userId)]).size;
   const traffic = usageAnalyticsEnabled() ? await getUsageKpis(now) :
     { status: "NOT_INSTRUMENTED" as const, visits: null, dau: null, mau: null };
   return { scope: "OVERVIEW" as const, ...billing, totalUsers, newUsers30d,
-    liteUsers: Math.max(0, totalUsers - premiumUsers.length), premiumUsers: premiumUsers.length,
+    liteUsers: Math.max(0, totalUsers - premiumCount), premiumUsers: premiumCount,
     traffic };
 }

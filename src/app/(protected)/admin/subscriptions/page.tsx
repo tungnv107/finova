@@ -22,9 +22,8 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
   const eventLabel = (kind: string) => ({ GRANT_ACTIVATED: "Kích hoạt từ thanh toán",
     MANUAL_ACTIVATED: "Duyệt cấp bù", GRANT_REVOKED: "Thu hồi quyền" }[kind] ?? kind);
   return <div>
-    <div className="page-head"><div><h2 className="page-title">Phê duyệt điều chỉnh Premium</h2>
-      <p className="subtitle">Cấp bù/thu hồi thủ công theo quy trình hai người, lưu đầy đủ lý do và lịch sử.</p></div>
-      <Link className="button button-outline" href="/admin/users">Người dùng</Link></div>
+    <div className="page-head"><div><h2 className="page-title">Yêu cầu Premium</h2>
+      <p className="subtitle">Đăng ký từ người dùng và cấp bù/thu hồi nội bộ. Chỉ Super Admin có thể duyệt; mọi quyết định được lưu nhật ký.</p></div></div>
     <div className="admin-metrics" aria-label="Tổng hợp điều chỉnh Premium">
       <div className="card card-pad"><span className="hero-label">CHỜ PHÊ DUYỆT CÒN HẠN</span><div className="kpi-value">{n(summary.pending)}</div></div>
       <div className="card card-pad"><span className="hero-label">ĐÃ DUYỆT · LŨY KẾ</span><div className="kpi-value">{n(summary.approved)}</div></div>
@@ -38,12 +37,12 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
       <Link className="button button-outline" href="/admin/subscriptions?status=REJECTED">Từ chối</Link>
     </nav>
     <section className="card card-pad" style={{ marginTop: 20 }}>
-      <div className="table-wrap"><table><thead><tr><th>Người dùng</th><th>Yêu cầu</th><th>Lý do</th>
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="Danh sách yêu cầu Premium"><table><thead><tr><th>Người dùng</th><th>Yêu cầu</th><th>Lý do</th>
         <th>Đề xuất / hạn duyệt</th><th>Người duyệt / kết quả</th></tr></thead><tbody>
         {actions.items.map(a => <tr key={a.id}>
           <td><Link href={`/admin/users/${encodeURIComponent(a.userId)}`}>{a.userId}</Link></td>
-          <td>{a.kind === "MANUAL_GRANT" ? `Cấp bù ${a.billingPeriod === "MONTH" ? "1 tháng" : "1 năm"}` : "Thu hồi grant thủ công"}</td>
-          <td><p>{a.reason}</p><span className="section-subtitle">Đề xuất bởi {a.requestedBy}</span></td>
+          <td>{a.kind === "MANUAL_GRANT" ? `${a.requestedBy === a.userId ? "Đăng ký Premium" : "Cấp bù"} ${a.billingPeriod === "MONTH" ? "1 tháng" : "1 năm"}` : "Thu hồi grant thủ công"}</td>
+          <td><p>{a.reason}</p><span className="section-subtitle">{a.requestedBy === a.userId ? "Người dùng tự đăng ký" : `Đề xuất bởi ${a.requestedBy}`}</span></td>
           <td>{vietnamTime(a.createdAt)}<br />{vietnamTime(a.expiresAt)}</td>
           <td>{a.status === "PENDING" ? (a.expiresAt <= new Date() ? "Đề xuất quá hạn" :
             <AdminSubscriptionDecision id={a.id} canReview={actor.role === "SUPER_ADMIN" && actor.userId !== a.requestedBy && actor.userId !== a.userId} />) :
@@ -53,6 +52,7 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
         </tr>)}
       </tbody></table></div>
       {!actions.items.length && <p className="section-subtitle">Chưa có đề xuất ở trạng thái này.</p>}
+      <p className="section-subtitle">Với đăng ký từ người dùng, chỉ phê duyệt sau khi đã tự xác minh điều kiện và thanh toán qua kênh chính thức. Phê duyệt thủ công không tạo doanh thu, đơn hàng hay xác nhận ngân hàng trong Finova.</p>
       <div className="admin-shortcuts">
         {params.actionCursor && <Link className="button button-outline" href={`/admin/subscriptions?status=${status}${params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""}`}>Trang đầu đề xuất</Link>}
         {actions.nextCursor && <Link className="button button-outline" href={`/admin/subscriptions?status=${status}&actionCursor=${encodeURIComponent(actions.nextCursor)}${params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""}`}>Xem 50 đề xuất tiếp</Link>}
@@ -62,7 +62,7 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
     <section className="card card-pad" style={{ marginTop: 20 }}>
       <h3 className="section-title">Lịch sử cấp quyền và gia hạn</h3>
       <p className="section-subtitle">Sự kiện ghi nhận bất biến từ thanh toán đã xác minh hoặc quy trình phê duyệt thủ công. Không bao gồm ví và sao kê cá nhân.</p>
-      <div className="table-wrap"><table><thead><tr><th>Thời gian (VN)</th><th>Người dùng</th><th>Sự kiện</th><th>Bắt đầu</th><th>Hết hạn</th><th>Nguồn</th></tr></thead><tbody>
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="Lịch sử cấp quyền Premium"><table><thead><tr><th>Thời gian (VN)</th><th>Người dùng</th><th>Sự kiện</th><th>Bắt đầu</th><th>Hết hạn</th><th>Nguồn</th></tr></thead><tbody>
         {timeline.items.map(e => <tr key={e.id}><td>{vietnamTime(e.createdAt)}</td>
           <td><Link href={`/admin/users/${encodeURIComponent(e.userId)}`}>{e.userId}</Link></td>
           <td>{eventLabel(e.kind)}</td><td>{e.startsAt ? vietnamTime(e.startsAt) : "—"}</td>

@@ -8,11 +8,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const actor = await requireAdminPageRole(allReportingRoles);
   const userManager = actor.role === "SUPER_ADMIN" || actor.role === "ADMIN";
   return <section className="admin-shell">
-    <div className="admin-banner"><div><span className="hero-label">FINOVA · SYSTEM ADMIN</span>
-      <h1>Trung tâm quản trị</h1><p>Quản lý tài khoản, gói Premium và vận hành nền tảng.</p></div>
-      <span className="admin-role">{actor.role.replaceAll("_", " ")}</span></div>
     <AdminNavigation userManager={userManager} analyticsAccess={actor.role !== "FINANCE_OPERATOR"}
       billingAccess={actor.role !== "ANALYST"} />
-    <div id="admin-content" className="admin-content">{children}</div>
+    <main id="admin-content" className="admin-content">
+      <div className="admin-banner"><div><span className="hero-label">BẢNG ĐIỀU KHIỂN / FINOVA</span>
+        <h1>Trung tâm quản trị</h1><p>Người dùng · Gói dịch vụ · Vận hành</p></div>
+        <span className="admin-role">{actor.role === "SUPER_ADMIN" ? "Super Admin · Premium" : actor.role.replaceAll("_", " ")}</span></div>
+      {children}
+    </main>
   </section>;
 }

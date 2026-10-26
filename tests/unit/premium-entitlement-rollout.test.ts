@@ -3,13 +3,15 @@ import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(), findAccessState: vi.fn(), findGrants: vi.fn(),
-  findWorkspace: vi.fn(), findGrantInDb: vi.fn(), bootstrap: vi.fn(), limit: vi.fn(),
+  findWorkspace: vi.fn(), findGrantInDb: vi.fn(), findSuperAdmin: vi.fn(),
+  bootstrap: vi.fn(), limit: vi.fn(),
 }));
 
 vi.mock("@/server/auth", () => ({ auth: { api: { getSession: mocks.getSession } } }));
 vi.mock("@/lib/db", () => ({ prisma: {
   userAccessState: { findUnique: mocks.findAccessState },
   subscriptionGrant: { findMany: mocks.findGrants },
+  systemRoleAssignment: { findFirst: mocks.findSuperAdmin },
   workspace: { findUnique: mocks.findWorkspace },
 } }));
 vi.mock("@/server/bootstrap", () => ({ bootstrapPersonalWorkspace: mocks.bootstrap }));
@@ -35,6 +37,7 @@ beforeEach(() => {
   mocks.getSession.mockReset().mockResolvedValue({ user: { id: "member", name: "Member" } });
   mocks.findAccessState.mockReset().mockResolvedValue({ status: "ACTIVE" });
   mocks.findGrants.mockReset().mockResolvedValue([]);
+  mocks.findSuperAdmin.mockReset().mockResolvedValue(null);
   mocks.findWorkspace.mockReset().mockResolvedValue({ createdById: "member" });
   mocks.findGrantInDb.mockReset().mockResolvedValue(null);
   mocks.bootstrap.mockReset().mockResolvedValue("workspace");
@@ -79,6 +82,7 @@ describe("server-side Lite/Premium feature rollout", () => {
       workspace: { findUnique: mocks.findWorkspace },
       userAccessState: { findUnique: mocks.findAccessState },
       subscriptionGrant: { findFirst: mocks.findGrantInDb },
+      systemRoleAssignment: { findFirst: mocks.findSuperAdmin },
     };
     for (const feature of features) {
       await expect(requireWorkspacePremiumInDb(db as never, "workspace", feature))
@@ -94,6 +98,24 @@ describe("server-side Lite/Premium feature rollout", () => {
     for (const guard of guards) await expect(guard(request())).resolves.toMatchObject({ userId: "member" });
     for (const feature of features) expect(await hasPremiumFeature("member", feature)).toBe(true);
     expect(mocks.findGrants).not.toHaveBeenCalled();
+  });
+
+  it("gives Super Admin Premium without a paid grant or expiry, including worker writes", async () => {
+    mocks.findSuperAdmin.mockResolvedValue({ id: "role-1" });
+    const subscription = await getEffectiveSubscription("member");
+    expect(subscription).toEqual({ plan: "PREMIUM", expiresAt: null });
+    for (const feature of features) expect(await hasPremiumFeature("member", feature)).toBe(true);
+    const db = { workspace: { findUnique: mocks.findWorkspace },
+      userAccessState: { findUnique: mocks.findAccessState },
+      systemRoleAssignment: { findFirst: mocks.findSuperAdmin },
+      subscriptionGrant: { findFirst: mocks.findGrantInDb } };
+    await expect(requireWorkspacePremiumInDb(db as never, "workspace", "BANK_SYNC")).resolves.toBeUndefined();
+    expect(mocks.findGrantInDb).not.toHaveBeenCalled();
+  });
+
+  it("enforces Lite when Admin is on and premium flag is unset", async () => {
+    delete process.env.FINOVA_PREMIUM_ENTITLEMENTS_ENFORCED;
+    await expect(requireBankSyncContext(request())).rejects.toMatchObject({ code: "PREMIUM_REQUIRED" });
   });
 
   it("keeps suspended users blocked with Admin UI and Premium paywall both off", async () => {

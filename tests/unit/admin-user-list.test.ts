@@ -110,4 +110,10 @@ describe("admin user pagination and PII exports", () => {
     userFindUnique.mockResolvedValueOnce(null);
     await expect(getAdminUser("missing")).rejects.toMatchObject({ status: 404 });
   });
+
+  it("shows Super Admin as Premium even without a subscription grant", async () => {
+    userFindMany.mockResolvedValueOnce([{ ...makeUser(1), systemRoles: [{ role: "SUPER_ADMIN" }] }]);
+    const list = await listAdminUsers({});
+    expect(list.users[0]).toMatchObject({ plan: "PREMIUM", premiumExpiresAt: null });
+  });
 });

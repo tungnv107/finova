@@ -36,6 +36,7 @@
     "admin:test-signed-session": "node --env-file-if-exists=.env --import tsx scripts/admin-signed-session-integration-check.ts",
     "admin:test-shell-browser": "node --env-file-if-exists=.env --import tsx scripts/admin-shell-browser-check.ts",
     "admin:test-billing-browser": "node --env-file-if-exists=.env --import tsx scripts/admin-billing-browser-check.ts",
+    "admin:test-registration-browser": "node --env-file-if-exists=.env --import tsx scripts/admin-premium-registration-browser-check.ts",
     "admin:test-analytics-browser": "node --env-file-if-exists=.env --import tsx scripts/admin-analytics-browser-check.ts",
     "admin:test-checkout-browser": "node --env-file-if-exists=.env --import tsx scripts/admin-checkout-qa-runner.mjs",
     "admin:test-operations": "node --env-file-if-exists=.env --import tsx scripts/admin-operational-alerts-qa-runner.mjs",

@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { orderCount, paidAggregate, userCount, premiumGroupBy, paymentCount, paymentFindMany } = vi.hoisted(() => ({
+const { orderCount, paidAggregate, userCount, premiumGroupBy, superAdminFindMany, paymentCount, paymentFindMany } = vi.hoisted(() => ({
   orderCount: vi.fn(), paidAggregate: vi.fn(), userCount: vi.fn(), premiumGroupBy: vi.fn(),
+  superAdminFindMany: vi.fn(),
   paymentCount: vi.fn(), paymentFindMany: vi.fn(),
 }));
 
 vi.mock("../../src/lib/db", () => ({ prisma: {
   billingOrder: { count: orderCount }, paymentAllocation: { aggregate: paidAggregate },
   user: { count: userCount }, subscriptionGrant: { groupBy: premiumGroupBy },
+  systemRoleAssignment: { findMany: superAdminFindMany },
   billingPaymentEvent: { count: paymentCount, findMany: paymentFindMany },
 } }));
 vi.mock("../../src/modules/admin/usage", () => ({ usageAnalyticsEnabled: () => false }));
@@ -20,6 +22,7 @@ beforeEach(() => {
   paidAggregate.mockReset().mockResolvedValue({ _sum: { amountVnd: BigInt(203000) } });
   userCount.mockReset().mockResolvedValueOnce(22).mockResolvedValueOnce(4);
   premiumGroupBy.mockReset().mockResolvedValue([{ userId: "a" }, { userId: "b" }]);
+  superAdminFindMany.mockReset().mockResolvedValue([]);
   paymentCount.mockReset().mockResolvedValue(1);
   paymentFindMany.mockReset().mockResolvedValue([{
     id: "payment-1", provider: "SEPAY", providerTransactionId: "secret-9876",
@@ -63,5 +66,11 @@ describe("admin data projection by role", () => {
     expect(paymentFindMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { matchStatus: { in: expect.any(Array) } }, take: 30,
     }));
+  });
+
+  it("counts Super Admin as Premium exactly once even with a grant", async () => {
+    superAdminFindMany.mockResolvedValue([{ userId: "a" }, { userId: "root" }]);
+    const result = await getAdminOverview("ADMIN");
+    expect(result).toMatchObject({ premiumUsers: 3, liteUsers: 19 });
   });
 });

@@ -5,11 +5,18 @@ import type { UserContext } from "@/server/context";
 import { featureAllowed, type PremiumFeature } from "@/modules/billing/domain";
 import type { Prisma } from "@finova/prisma";
 
-/** Keep enforcement off until the migration, bank reconciliation and existing-user transition are approved. */
-export const premiumEnforced = () => process.env.FINOVA_ADMIN_ENABLED === "1" && process.env.FINOVA_PREMIUM_ENTITLEMENTS_ENFORCED === "1";
+/** Lite limits apply when the platform Admin module is enabled. Emergency rollback remains explicit. */
+export const premiumEnforced = () => process.env.FINOVA_ADMIN_ENABLED === "1" && process.env.FINOVA_PREMIUM_ENTITLEMENTS_ENFORCED !== "0";
+
+async function isSuperAdmin(userId: string) {
+  return Boolean(await prisma.systemRoleAssignment.findFirst({
+    where: { userId, role: "SUPER_ADMIN", revokedAt: null }, select: { id: true },
+  }));
+}
 
 export async function getEffectiveSubscription(userId: string, now = new Date()) {
   if (process.env.FINOVA_ADMIN_ENABLED !== "1") return { plan: "LITE" as const, expiresAt: null as Date | null };
+  if (await isSuperAdmin(userId)) return { plan: "PREMIUM" as const, expiresAt: null as Date | null };
   const grants = await prisma.subscriptionGrant.findMany({ where: { userId, startsAt: { lte: now }, expiresAt: { gt: now }, revokedAt: null },
     select: { expiresAt: true }, orderBy: { expiresAt: "desc" } });
   return { plan: (grants.length ? "PREMIUM" : "LITE") as "LITE" | "PREMIUM", expiresAt: grants[0]?.expiresAt ?? null };
@@ -33,6 +40,9 @@ export async function requireWorkspacePremiumInDb(
     if (state && state.status !== "ACTIVE") throw new HttpError(403, "ACCOUNT_DISABLED", "Tài khoản đang bị khóa.");
   }
   if (!premiumEnforced()) return;
+  if (await db.systemRoleAssignment.findFirst({ where: {
+    userId: workspace.createdById, role: "SUPER_ADMIN", revokedAt: null,
+  }, select: { id: true } })) return;
   const grant = await db.subscriptionGrant.findFirst({ where: {
     userId: workspace.createdById, startsAt: { lte: now }, expiresAt: { gt: now }, revokedAt: null,
   }, select: { id: true } });

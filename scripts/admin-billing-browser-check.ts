@@ -223,7 +223,7 @@ async function main() {
             heading: document.querySelector('.admin-banner h1')?.textContent,
             navigationWidth: nav.scrollWidth, navigationViewport: nav.clientWidth,
             theme: document.documentElement.dataset.theme,
-            touchHeight: Math.min(...links.map(link => link.getBoundingClientRect().height)) }; })()`);
+            touchHeight: Math.min(...[...nav.querySelectorAll('summary, a')].filter(el => el.getClientRects().length > 0).map(el => el.getBoundingClientRect().height)) }; })()`);
         assert.equal(measurements.viewport, width);
         assert.ok(measurements.pageWidth <= width + 1, `${role} ${width}: page overflow (${measurements.pageWidth})`);
         assert.equal(measurements.heading, "Trung tâm quản trị");

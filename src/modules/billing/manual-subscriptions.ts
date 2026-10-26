@@ -28,6 +28,55 @@ function requireProposer(actor: SystemActor) {
   }
 }
 
+/** Self-service registration is an application, not a payment acknowledgement.
+ * It shares the audited, independent Super Admin decision path with manual grants. */
+export async function requestPremiumRegistration(userId: string, period: "MONTH" | "YEAR", idempotencyKey: string) {
+  if (process.env.FINOVA_ADMIN_ENABLED !== "1") throw new HttpError(503, "ADMIN_DISABLED", "Đăng ký Premium đang tạm đóng.");
+  if (period !== "MONTH" && period !== "YEAR") throw new HttpError(422, "INVALID_PERIOD", "Kỳ hạn không hợp lệ.");
+  if (!/^[a-zA-Z0-9_-]{8,128}$/.test(idempotencyKey)) throw new HttpError(422, "INVALID_IDEMPOTENCY_KEY", "Mã yêu cầu không hợp lệ.");
+  return serializable(async db => {
+    const prior = await db.subscriptionActionRequest.findUnique({ where: {
+      requestedBy_idempotencyKey: { requestedBy: userId, idempotencyKey },
+    } });
+    if (prior) {
+      if (prior.userId !== userId || prior.kind !== "MANUAL_GRANT" || prior.billingPeriod !== period) {
+        throw new HttpError(409, "IDEMPOTENCY_CONFLICT", "Mã yêu cầu đã được sử dụng.");
+      }
+      return { id: prior.id, status: prior.status, expiresAt: prior.expiresAt };
+    }
+    const user = await db.user.findUnique({ where: { id: userId }, select: {
+      id: true, accessState: { select: { status: true } },
+      systemRoles: { where: { revokedAt: null }, select: { id: true }, take: 1 },
+    } });
+    if (!user || (user.accessState && user.accessState.status !== "ACTIVE")) {
+      throw new HttpError(403, "USER_NOT_ACTIVE", "Tài khoản không hoạt động.");
+    }
+    if (user.systemRoles.length) throw new HttpError(403, "PRIVILEGED_TARGET", "Tài khoản quản trị không đăng ký qua biểu mẫu này.");
+    const now = new Date();
+    const pending = await db.subscriptionActionRequest.findFirst({ where: {
+      userId, requestedBy: userId, kind: "MANUAL_GRANT", status: "PENDING", expiresAt: { gt: now },
+    }, select: { id: true } });
+    if (pending) throw new HttpError(409, "REGISTRATION_PENDING", "Bạn đã có yêu cầu chờ duyệt. Vui lòng theo dõi trạng thái.");
+    const reason = "Người dùng đăng ký Premium; quản trị xác minh điều kiện và thanh toán ngoài hệ thống trước khi duyệt.";
+    const request = await db.subscriptionActionRequest.create({ data: {
+      userId, kind: "MANUAL_GRANT", billingPeriod: period, periodCount: 1,
+      reason, requestedBy: userId, idempotencyKey,
+      expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60_000),
+    } });
+    await db.adminAuditLog.create({ data: { actorId: userId, action: "PREMIUM_REGISTRATION_REQUESTED",
+      resourceType: "SUBSCRIPTION_ACTION", resourceId: request.id,
+      afterJson: { period, status: "PENDING", source: "SELF_SERVICE" } } });
+    return { id: request.id, status: request.status, expiresAt: request.expiresAt };
+  });
+}
+
+export async function listMyPremiumRegistrations(userId: string) {
+  return prisma.subscriptionActionRequest.findMany({ where: {
+    userId, requestedBy: userId, kind: "MANUAL_GRANT",
+  }, orderBy: { createdAt: "desc" }, take: 10,
+  select: { id: true, status: true, billingPeriod: true, createdAt: true, expiresAt: true, reviewedAt: true, reviewReason: true } });
+}
+
 export async function proposeSubscriptionAction(actor: SystemActor, input: Proposal) {
   requireProposer(actor);
   const reason = validReason(input.reason);

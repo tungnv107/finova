@@ -21,17 +21,20 @@ function adminUserWhere(input: { q: string; status?: UserAccessStatus }): Prisma
 function adminUserSelect(now: Date) {
   return { id: true, name: true, email: true, createdAt: true,
     accessState: { select: { status: true } },
+    systemRoles: { where: { role: "SUPER_ADMIN" as const, revokedAt: null }, select: { role: true }, take: 1 },
     subscriptionGrants: { where: { startsAt: { lte: now }, expiresAt: { gt: now }, revokedAt: null },
       orderBy: { expiresAt: "desc" as const }, take: 1, select: { expiresAt: true } },
   } as const;
 }
 
 function projectAdminUser<T extends { id: string; name: string; email: string; createdAt: Date;
-  accessState: { status: UserAccessStatus } | null; subscriptionGrants: { expiresAt: Date }[] }>(u: T) {
+  accessState: { status: UserAccessStatus } | null; subscriptionGrants: { expiresAt: Date }[];
+  systemRoles?: { role: string }[] }>(u: T) {
+  const superAdmin = u.systemRoles?.some(role => role.role === "SUPER_ADMIN") ?? false;
   return { id: u.id, name: u.name, email: u.email, createdAt: u.createdAt,
     accessState: u.accessState?.status ?? "ACTIVE" as const,
-    plan: u.subscriptionGrants.length ? "PREMIUM" as const : "LITE" as const,
-    premiumExpiresAt: u.subscriptionGrants[0]?.expiresAt ?? null };
+    plan: superAdmin || u.subscriptionGrants.length ? "PREMIUM" as const : "LITE" as const,
+    premiumExpiresAt: superAdmin ? null : u.subscriptionGrants[0]?.expiresAt ?? null };
 }
 
 export async function listAdminUsers(input: { q?: string; cursor?: string; status?: UserAccessStatus }) {
@@ -106,8 +109,8 @@ export async function getAdminUser(id: string) {
     select: { id: true, createdAt: true, afterJson: true } })]);
   if (!user) throw new HttpError(404, "USER_NOT_FOUND", "Không tìm thấy tài khoản.");
   return { ...user,
-    plan: activeGrant ? "PREMIUM" as const : "LITE" as const,
-    premiumExpiresAt: activeGrant?.expiresAt ?? null,
+    plan: user.systemRoles.some(r => r.role === "SUPER_ADMIN") || activeGrant ? "PREMIUM" as const : "LITE" as const,
+    premiumExpiresAt: user.systemRoles.some(r => r.role === "SUPER_ADMIN") ? null : activeGrant?.expiresAt ?? null,
     accessState: user.accessState ?? { status: "ACTIVE" as const, updatedAt: null },
     lastSessionAt: user.sessions[0]?.updatedAt ?? null,
     lastSeenAt: [user.sessions[0]?.updatedAt, user.usageDays[0]?.lastSeenAt]
