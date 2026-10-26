@@ -24,11 +24,13 @@ export default async function BillingOperationsPage() {
         dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh",
       }).format(data.checkedAt)}. Chỉ hiển thị số lượng tổng hợp.</p>
     </div></div>
-    <div className="admin-shortcuts">
-      <Link href="/admin/billing/operations/inbox" className="button button-outline">Hộp cảnh báo đã phân công</Link>
-      <Link href="/admin/billing/operations" className="button button-outline">Kiểm tra lại</Link>
-      <Link href="/admin/billing/payments?review=1" className="button button-outline">Hàng đối soát</Link>
-      <Link href="/admin/billing/notices" className="button button-outline">Hàng thông báo</Link>
+    <div className="admin-operations-toolbar">
+      <Link href="/admin/billing/operations/inbox" className="button button-primary">Hộp cảnh báo đã phân công</Link>
+      <details className="admin-more-actions"><summary>Công cụ liên quan</summary>
+        <div><Link href="/admin/billing/operations">Kiểm tra lại</Link>
+          <Link href="/admin/billing/payments?review=1">Hàng đối soát</Link>
+          <Link href="/admin/billing/notices">Hàng thông báo</Link></div>
+      </details>
     </div>
     {data.alerts.length === 0 ? <section className="card card-pad" role="status" style={{ marginTop: 18 }}>
       <h3 className="section-title">Chưa thấy tín hiệu vượt ngưỡng</h3>

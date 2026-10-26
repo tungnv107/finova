@@ -8,7 +8,7 @@ vi.mock("../../src/modules/admin/billing-analytics", () => ({ getBillingAnalytic
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) =>
   createElement("a", { href }, children) }));
 
-import BillingAnalyticsPage from "../../src/app/(protected)/admin/billing/analytics/page";
+import BillingAnalyticsPage from "../../src/app/(admin-portal)/admin/billing/analytics/page";
 
 beforeEach(() => {
   vi.resetAllMocks();

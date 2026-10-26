@@ -29,12 +29,18 @@ export default async function BillingOrdersPage({ searchParams }: {
     <div className="page-head"><div><h2 className="page-title">Đơn thu phí Premium</h2>
       <p className="subtitle">Theo dõi đơn, thời hạn và trạng thái kích hoạt. Không hiển thị tài khoản hoặc số dư của người dùng.</p>
     </div></div>
-    <nav aria-label="Lọc trạng thái đơn" className="admin-shortcuts">
-      {([undefined, "PENDING_PAYMENT", "PAID", "EXPIRED", "REVIEW", "REFUNDED"] as const).map(value =>
-        <Link key={value ?? "ALL"} href={`/admin/billing/orders${value ? `?status=${value}` : ""}`}
-          className={`button ${status === value ? "button-primary" : "button-outline"}`} aria-current={status === value ? "page" : undefined}>
-          {value ?? "Tất cả"}</Link>)}
-    </nav>
+    <form method="GET" className="admin-order-filter" aria-label="Lọc trạng thái đơn">
+      <label htmlFor="admin-order-status">Trạng thái đơn</label>
+      <select id="admin-order-status" name="status" defaultValue={status ?? ""}>
+        <option value="">Tất cả</option>
+        <option value="PENDING_PAYMENT">Chờ thanh toán</option>
+        <option value="PAID">Đã thanh toán</option>
+        <option value="EXPIRED">Hết hạn</option>
+        <option value="REVIEW">Cần kiểm tra</option>
+        <option value="REFUNDED">Đã hoàn tiền</option>
+      </select>
+      <button className="button button-primary" type="submit">Áp dụng</button>
+    </form>
     <section className="card card-pad" style={{ marginTop: 18 }}>
       <p className="section-subtitle">{result.total.toLocaleString("vi-VN")} đơn trong bộ lọc</p>
       <div className="table-wrap" role="region" aria-label="Danh sách đơn thu phí" tabIndex={0}>

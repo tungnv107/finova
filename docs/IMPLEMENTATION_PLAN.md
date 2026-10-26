@@ -1,5 +1,9 @@
 # Kế hoạch triển khai thực tế theo phase — Finova
 
+### QA checkpoint 26/10/2026 — Admin Console độc lập
+
+- [x] **UI-26A — Thiết kế lại Admin Console (DEV):** Tách nhóm route `/admin` khỏi layout tài chính cá nhân, giữ nguyên URL và RBAC; tạo sidebar riêng theo vai trò, menu thu gọn, dashboard KPI và công việc ưu tiên; gom bộ lọc đơn, thanh toán và thao tác vận hành. Sửa vùng chạm menu ≥44px, tăng tương phản màu. `admin:test-shell-browser` **PASS** trên PostgreSQL QA cô lập với signed sessions ADMIN/ANALYST, URL bị từ chối HTTP 403, Chrome 1440/390/320 px Light/Dark, không tràn ngang và axe WCAG serious/critical = 0; cleanup fixture. **11/11 unit liên quan**, TypeScript, ESLint phạm vi thay đổi và production build **59/59 trang PASS**. Chưa thay thế UAT Google OAuth thực tế và nghiệm thu phát hành; billing production vẫn **NO-GO**.
+
 ### QA checkpoint 26/10/2026 — AD5-05 KPI thu phí từng phần
 
 - [x] **QA-26E — AD5-05 KPI DEV từng phần:** Đã bổ sung distinct paid/first/renewing users, grant tháng/năm, tiền VERIFIED/IN chưa khớp và gross allocation theo ngày VN; SQL tránh đếm trùng người có nhiều grant, tiền không mất chính xác. PostgreSQL QA riêng `finova_admin_test_ad505_20261026` (31 migrations), `admin:test-billing-analytics` PASS gồm biên ngày, renewal, review VND và cleanup; **499/499 unit**, typecheck, lint, Prisma, route audit **80/99** PASS. Next build QA **58/58** PASS sau tối ưu SQL. **AD5-05 cha vẫn `[ ]`, Admin 36/55 DEV:** còn refund ledger/net cash/net revenue và định nghĩa churn/sign-off. Google OAuth thật, SePay UAT, staging HTTPS và nghiệm thu phát hành chưa đạt; **billing production NO-GO**.

@@ -9,7 +9,7 @@ vi.mock("../../src/modules/admin/cohorts", () => ({ getRegistrationCohorts: mock
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) =>
   createElement("a", { href }, children) }));
 
-import AdminAnalyticsPage from "../../src/app/(protected)/admin/analytics/page";
+import AdminAnalyticsPage from "../../src/app/(admin-portal)/admin/analytics/page";
 
 beforeEach(() => {
   vi.resetAllMocks();

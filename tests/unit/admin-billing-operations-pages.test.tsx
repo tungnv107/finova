@@ -16,9 +16,9 @@ vi.mock("next/link", () => ({ default: ({ href, children, ...props }: {
   href: string; children: React.ReactNode; [key: string]: unknown;
 }) => createElement("a", { href, ...props }, children) }));
 
-import BillingOperationsPage from "../../src/app/(protected)/admin/billing/operations/page";
-import BillingOrdersPage from "../../src/app/(protected)/admin/billing/orders/page";
-import AdminAuditPage from "../../src/app/(protected)/admin/audit/page";
+import BillingOperationsPage from "../../src/app/(admin-portal)/admin/billing/operations/page";
+import BillingOrdersPage from "../../src/app/(admin-portal)/admin/billing/orders/page";
+import AdminAuditPage from "../../src/app/(admin-portal)/admin/audit/page";
 
 beforeEach(() => {
   vi.resetAllMocks();

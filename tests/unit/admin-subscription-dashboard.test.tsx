@@ -16,7 +16,7 @@ vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; chil
   createElement("a", { href }, children) }));
 
 import { getSubscriptionOperations, listSubscriptionActionPage, listSubscriptionLifecycle } from "../../src/modules/billing/manual-subscriptions";
-import AdminSubscriptionActionsPage from "../../src/app/(protected)/admin/subscriptions/page";
+import AdminSubscriptionActionsPage from "../../src/app/(admin-portal)/admin/subscriptions/page";
 
 const date = new Date("2026-10-24T10:00:00.000Z");
 const event = (id: string) => ({ id, userId: "member-1", kind: "MANUAL_ACTIVATED", orderId: null,

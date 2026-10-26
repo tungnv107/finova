@@ -22,11 +22,15 @@ export default async function AdminPaymentsPage({ searchParams }: {
   return <div>
     <div className="page-head"><div><h2 className="page-title">Đối soát thanh toán Premium</h2>
       <p className="subtitle">Các giao dịch ngân hàng đã ghi nhận; chỉ giao dịch xác thực và khớp đầy đủ mới cấp Premium.</p></div></div>
-    <div className="admin-shortcuts">
-      <Link className="button button-outline" href="/admin/billing/payments">Tất cả giao dịch</Link>
-      <Link className="button button-outline" href="/admin/billing/payments?review=1">Chờ xử lý / ngoại lệ</Link>
-      <Link className="button button-outline" href="/admin/billing/notices">Hàng lỗi thông báo</Link>
+    <div className="admin-operations-toolbar">
+      <nav aria-label="Chế độ đối soát" className="admin-segmented">
+        <Link aria-current={!reviewOnly ? "page" : undefined} href="/admin/billing/payments">Tất cả</Link>
+        <Link aria-current={reviewOnly ? "page" : undefined} href="/admin/billing/payments?review=1">Cần kiểm tra</Link>
+      </nav>
       <span className="section-subtitle">{result.total} giao dịch {reviewOnly ? "cần kiểm tra" : "đã ghi nhận"}</span>
+      <details className="admin-more-actions"><summary>Liên quan</summary><div>
+        <Link href="/admin/billing/notices">Hàng lỗi thông báo</Link>
+      </div></details>
     </div>
     <section className="card card-pad" style={{ marginTop: 20 }}>
       <div className="table-wrap"><table><thead><tr>

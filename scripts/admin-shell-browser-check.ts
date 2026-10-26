@@ -181,9 +181,9 @@ async function main() {
         if (width <= 390) assert.ok(measurements.navigationViewport <= width,
           "Admin menu must scroll inside its own container");
         await evaluate(axe);
-        const violations = await evaluate<Array<{ id: string; impact: string }>>(`axe.run(document,
+        const violations = await evaluate<Array<{ id: string; impact: string; targets: Array<{ selector: string[]; issue?: string }> }>>(`axe.run(document,
           { runOnly: { type: 'tag', values: ['wcag2a','wcag2aa','wcag21a','wcag21aa','wcag22aa'] } })
-          .then(r => r.violations.map(v => ({ id: v.id, impact: v.impact })))`);
+          .then(r => r.violations.map(v => ({ id: v.id, impact: v.impact, targets: v.nodes.slice(0, 12).map(n => ({ selector: n.target, issue: n.failureSummary })) })))`);
         assert.deepEqual(violations.filter(item => ["serious", "critical"].includes(item.impact)), [],
           `${role} ${width} ${theme}: serious WCAG violations`);
         console.log(`PASS: ${role} ${width}px ${theme}, nav, overflow, axe WCAG`);

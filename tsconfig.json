@@ -55,6 +55,8 @@
     ".next-build-qa-ad206-elevated/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".next-*",
+    ".next/dev"
   ]
 }
