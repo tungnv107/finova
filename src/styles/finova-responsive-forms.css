@@ -46,6 +46,19 @@
   text-align: start;
 }
 
+/* Remove the blue/teal focus glow from all form controls, including iOS selects
+ * and native date inputs. Preserve a neutral keyboard focus indicator. */
+:is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  border-color: var(--finova-border-control);
+  outline: none;
+  box-shadow: none;
+}
+
+:is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus-visible {
+  outline: 2px solid var(--finova-text-muted);
+  outline-offset: 2px;
+}
+
 /* iPadOS may zoom inputs below 16px, including those in nested account forms. */
 @media (max-width: 1199px) {
   .field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"]) {

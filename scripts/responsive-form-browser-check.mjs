@@ -89,7 +89,7 @@ try {
       host.style.cssText = 'width:calc(100% - ' + (${width} >= 768 ? '300px' : '32px') + ');max-width:100%;padding:0;margin:0 auto;';
       host.innerHTML =
         '<form id="qa-report" class="card filterbar">' + field('qa-report-start','date') + field('qa-report-end','date') + wallet + wallet.replaceAll('qa-wallet','qa-category') + '<button class="button">Xem báo cáo</button></form>' +
-        '<form id="qa-editor" class="card card-pad"><div class="form-grid">' + field('qa-occurred','datetime-local','2026-10-27T14:15') + field('qa-budget','date') + wallet.replaceAll('qa-wallet','qa-account') + field('qa-month','month','2026-10') + '</div></form>' +
+        '<form id="qa-editor" class="card card-pad"><div class="form-grid">' + field('qa-occurred','datetime-local','2026-10-27T14:15') + field('qa-budget','date') + wallet.replaceAll('qa-wallet','qa-account') + field('qa-month','month','2026-10') + field('qa-search','text','Chi tiêu') + '</div></form>' +
         '<form id="qa-dashboard-sheet" class="card filterbar dashboard-filter-form expanded-mobile">' + field('qa-sheet-start','date') + field('qa-sheet-end','date') + wallet.replaceAll('qa-wallet','qa-sheet-wallet') + '<button class="button">Xem báo cáo</button></form>' +
         '<form id="qa-transaction-sheet" class="card filterbar v4-filter-form v4-transaction-filter-sheet is-open">' + field('qa-filter-start','date') + field('qa-filter-end','date') + wallet.replaceAll('qa-wallet','qa-filter-wallet') + '<button class="button">Áp dụng</button></form>';
       document.body.append(host);
@@ -111,6 +111,26 @@ try {
           }
           if (${width} <= 1199 && ctrl.matches('input[type=date],input[type=datetime-local],input[type=month]') && parseFloat(getComputedStyle(ctrl).fontSize) < 16) invalid.push(ctrl.id + ': iOS font smaller than 16px');
         }
+      }
+      // Safari/Chromium should keep input and select focus neutral in both themes.
+      for (const theme of ['light', 'dark']) {
+        document.documentElement.dataset.theme = theme;
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--finova-text-muted)';
+        host.append(probe);
+        const neutralColor = getComputedStyle(probe).color;
+        for (const id of ['qa-report-start', 'qa-occurred', 'qa-wallet', 'qa-search']) {
+          const ctrl = document.getElementById(id);
+          const originalBorder = getComputedStyle(ctrl).borderColor;
+          ctrl.focus({ preventScroll: true });
+          const focusedBorder = getComputedStyle(ctrl).borderColor;
+          const focusedOutline = getComputedStyle(ctrl).outlineStyle;
+          const outlineColor = getComputedStyle(ctrl).outlineColor;
+          if (focusedBorder !== originalBorder) invalid.push(id + ': ' + theme + ' focus border changed color');
+          if (focusedOutline !== 'none' && outlineColor !== neutralColor) invalid.push(id + ': ' + theme + ' focus outline is not neutral');
+          ctrl.blur();
+        }
+        probe.remove();
       }
       return { invalid, viewport: innerWidth, forms: names.length, sheetScrollable: getComputedStyle(document.getElementById('qa-dashboard-sheet')).overflowY === 'auto' };
     })()`);
