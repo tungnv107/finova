@@ -3,6 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { GoalsManager } from "@/components/goals-manager";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// Test the set of available contextual actions separately from the closed-menu renderer.
+vi.mock("@/components/ui/interaction-controls", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/interaction-controls")>();
+  return { ...actual, ActionMenu: ({ label, items }: { label: string; items: { label: string }[] }) =>
+    <span aria-label={label}>{items.map(item => item.label).join(", ")}</span> };
+});
 
 const goal = {
   id: "goal-a", name: "Quỹ khẩn cấp", walletId: "wallet-a", walletName: "Tiền mặt",

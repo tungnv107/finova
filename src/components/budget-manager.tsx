@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Plus, PiggyBank } from "lucide-react";
+import { AlertTriangle, Plus, PiggyBank, Pencil, Archive, RotateCcw } from "lucide-react";
+import { ActionMenu } from "@/components/ui/interaction-controls";
 import { formatVnd } from "@/lib/money";
 import type { listBudgetPerformance } from "@/server/budgets";
 
@@ -128,7 +129,10 @@ export function BudgetManager({ initialBudgets, categories }: { initialBudgets: 
             <strong>{b.percent}% đã dùng</strong><span className="subtitle">Dự báo cả kỳ: {b.projected === null ? "Chưa đến kỳ" : formatVnd(b.projected)}</span>
           </div>
           {b.thresholds.length > 0 && !b.archived && <p className={`module-alert ${exceeded ? "module-danger-text" : ""}`}><AlertTriangle size={17} />{exceeded ? "Đã vượt 100% hạn mức" : `Đã chạm ngưỡng ${percent >= 100 ? "100" : percent >= 80 ? "80" : "50"}%`}</p>}
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 18 }}><button type="button" className="button button-outline" disabled={busy} onClick={() => beginEdit(b)}>Sửa</button><button type="button" className="button button-outline" disabled={busy} onClick={() => toggleArchive(b)}>{b.archived ? "Khôi phục" : "Lưu trữ"}</button></div>
+          <div className="finance-actions" style={{ marginTop: 18 }}><ActionMenu label={`Thao tác ngân sách ${b.name}`} disabled={busy} items={[
+            { label: "Sửa ngân sách", icon: Pencil, onSelect: () => beginEdit(b) },
+            { label: b.archived ? "Khôi phục" : "Lưu trữ", icon: b.archived ? RotateCcw : Archive, danger: !b.archived, onSelect: () => toggleArchive(b) },
+          ]} /></div>
         </article>;
       })}
     </div>

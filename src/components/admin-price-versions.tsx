@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { Archive, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { ActionMenu, StatusBadge } from "@/components/ui/interaction-controls";
 
 type Price = { id: string; productCode: string; version: number; priceVnd: number; lifecycle: string;
   publishedAt: string | null; effectiveFrom: string; effectiveTo: string | null };
@@ -14,6 +16,7 @@ export function AdminPriceVersions({ prices, audits = [] }: { prices: Price[]; a
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [pendingPublish, setPendingPublish] = useState<Price | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const currentlyPublished = pendingPublish && prices.find(price =>
     price.productCode === pendingPublish.productCode && price.lifecycle === "PUBLISHED");
 
@@ -28,6 +31,7 @@ export function AdminPriceVersions({ prices, audits = [] }: { prices: Price[]; a
       if (!response.ok) throw new Error(json?.error?.message ?? "Không lưu được thay đổi.");
       setMessage("Đã lưu thay đổi và nhật ký quản trị.");
       setPendingPublish(null);
+      setEditingId(null);
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Có lỗi xảy ra.");
@@ -57,25 +61,32 @@ export function AdminPriceVersions({ prices, audits = [] }: { prices: Price[]; a
           <tbody>{prices.map(price => <tr key={price.id}>
             <td>{price.productCode === "PREMIUM_MONTHLY" ? "Premium tháng" : "Premium năm"}</td>
             <td>v{price.version}</td><td>{money(price.priceVnd)}</td>
-            <td><span className="admin-pill">{price.lifecycle === "PUBLISHED" ? "Đang công bố" :
-              price.lifecycle === "ARCHIVED" ? "Đã ngừng" : "Bản nháp"}</span></td>
-            <td>{price.lifecycle === "DRAFT" ? <div className="admin-shortcuts">
-              <form onSubmit={event => changeDraft(event, price.id)}>
-                <label className="sr-only" htmlFor={`price-${price.id}`}>Sửa giá v{price.version} (VNĐ)</label>
-                <input id={`price-${price.id}`} name="priceVnd" aria-label={`Sửa giá v${price.version} (VNĐ)`}
-                  type="number" min="1" step="1" defaultValue={price.priceVnd} required disabled={busy} />
-                <button className="button button-outline" type="submit" disabled={busy}>Lưu nháp</button>
-              </form>
-              <button className="button button-primary" type="button" disabled={busy}
-                onClick={() => setPendingPublish(price)}>Xem trước công bố</button>
-              <button className="button button-outline" type="button" disabled={busy}
-                onClick={() => { if (window.confirm("Xóa bản nháp này?"))
-                  void act(`/api/v1/admin/billing/prices/${encodeURIComponent(price.id)}`, "DELETE"); }}>Xóa nháp</button>
+            <td><StatusBadge tone={price.lifecycle === "PUBLISHED" ? "success" : price.lifecycle === "DRAFT" ? "warning" : "neutral"}>
+              {price.lifecycle === "PUBLISHED" ? "Đang công bố" : price.lifecycle === "ARCHIVED" ? "Đã ngừng" : "Bản nháp"}
+            </StatusBadge></td>
+            <td>{price.lifecycle === "DRAFT" ? <div className="v4-price-actions">
+              <button className="v4-admin-record-link" type="button" disabled={busy}
+                onClick={() => { setEditingId(null); setPendingPublish(price); }}>Xem trước công bố<ChevronRight size={16} aria-hidden="true" /></button>
+              <ActionMenu label={`Tác vụ giá phiên bản ${price.version}`} disabled={busy} items={[
+                { label: "Chỉnh giá nháp", icon: Pencil, onSelect: () => { setEditingId(price.id); setPendingPublish(null); } },
+                { label: "Xóa bản nháp", icon: Trash2, danger: true, onSelect: () => {
+                  if (window.confirm(`Xóa bản nháp phiên bản v${price.version}?`))
+                    void act(`/api/v1/admin/billing/prices/${encodeURIComponent(price.id)}`, "DELETE");
+                } },
+              ]} />
+              {editingId === price.id && <form className="v4-price-edit" onSubmit={event => changeDraft(event, price.id)}>
+                <label htmlFor={`price-${price.id}`}>Giá nháp v{price.version} (VNĐ)</label>
+                <input id={`price-${price.id}`} name="priceVnd" type="number" min="1" step="1" defaultValue={price.priceVnd} required disabled={busy} />
+                <div className="v4-inline-actions"><button className="button button-primary" type="submit" disabled={busy}>Lưu giá</button>
+                  <button className="v4-secondary-text-button" type="button" disabled={busy} onClick={() => setEditingId(null)}>Hủy</button></div>
+              </form>}
             </div> : price.lifecycle === "PUBLISHED" ?
-              <button className="button button-outline" type="button" disabled={busy}
-                onClick={() => { if (window.confirm("Ngừng mở bán mức giá này?"))
-                  void act(`/api/v1/admin/billing/prices/${encodeURIComponent(price.id)}/unpublish`, "POST"); }}>Ngừng công bố</button>
-              : <span className="section-subtitle">Chỉ đọc</span>}</td>
+              <ActionMenu label={`Tác vụ giá phiên bản ${price.version}`} disabled={busy} items={[
+                { label: "Ngừng công bố", icon: Archive, danger: true, onSelect: () => {
+                  if (window.confirm(`Ngừng mở bán giá v${price.version}? Các đơn hiện tại vẫn giữ giá đã chốt.`))
+                    void act(`/api/v1/admin/billing/prices/${encodeURIComponent(price.id)}/unpublish`, "POST");
+                } },
+              ]} /> : <span className="section-subtitle">Chỉ đọc</span>}</td>
           </tr>)}</tbody></table>
         {prices.length === 0 && <p className="section-subtitle">Chưa có bảng giá Premium.</p>}
       </div>

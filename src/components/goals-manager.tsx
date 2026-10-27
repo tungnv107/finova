@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Target, AlertTriangle } from "lucide-react";
+import { Plus, Target, AlertTriangle, Pencil, Archive, RotateCcw } from "lucide-react";
+import { ActionMenu } from "@/components/ui/interaction-controls";
 import { formatVnd } from "@/lib/money";
 import type { listGoals } from "@/server/goals";
 
@@ -80,8 +81,11 @@ export function GoalsManager({ goals, wallets }: { goals: Goal[]; wallets: Walle
         <div className="module-progress" role="progressbar" aria-label={`Tiến độ ${g.name}`} aria-valuenow={Math.max(0, Math.min(100, Number(g.progress)))} aria-valuemin={0} aria-valuemax={100}><div className="module-progress-fill" style={{ width: `${Math.max(0, Math.min(100, Number(g.progress)))}%` }} /></div>
         <p className="subtitle" style={{ marginTop: 8 }}>{g.progress}% hoàn thành{g.daysLeft !== null && g.daysLeft > 0 && g.monthlyNeeded ? ` · Ước tính cần ${formatVnd(g.monthlyNeeded)} mỗi 30 ngày` : ""}</p>
         {g.walletUnderfunded && <p role="alert" className="module-alert module-danger-text"><AlertTriangle size={16} /> Ví đang có ít tiền hơn mức phân bổ. Kiểm tra lại sau khi chi tiêu hoặc chuyển tiền.</p>}
-        {!g.archived && <div style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 10, marginTop: 16 }}><div className="field" style={{ flex: "1 1 180px" }}><label htmlFor={`goal-amount-${g.id}`}>Số tiền (₫)</label><input id={`goal-amount-${g.id}`} inputMode="numeric" pattern="[1-9][0-9]*" value={amounts[g.id] ?? ""} onChange={e => setAmounts(v => ({ ...v, [g.id]: e.target.value }))} /></div><button type="button" className="button button-primary" disabled={busy || !amounts[g.id]} onClick={() => allocate(g, "ALLOCATE")}>Dành tiền</button><button type="button" className="button button-outline" disabled={busy || !amounts[g.id]} onClick={() => allocate(g, "RELEASE")}>Rút phân bổ</button></div>}
-        <div style={{ display: "flex", gap: 10, marginTop: 17 }}><button type="button" className="button button-outline" disabled={busy} onClick={() => begin(g)}>Sửa</button><button type="button" className="button button-outline" disabled={busy} onClick={() => archive(g)}>{g.archived ? "Khôi phục" : "Lưu trữ"}</button></div>
+        {!g.archived && <div style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 10, marginTop: 16 }}><div className="field" style={{ flex: "1 1 180px" }}><label htmlFor={`goal-amount-${g.id}`}>Số tiền (₫)</label><input id={`goal-amount-${g.id}`} inputMode="numeric" pattern="[1-9][0-9]*" value={amounts[g.id] ?? ""} onChange={e => setAmounts(v => ({ ...v, [g.id]: e.target.value }))} /></div><button type="button" className="button button-primary" disabled={busy || !amounts[g.id]} onClick={() => allocate(g, "ALLOCATE")}>Dành tiền</button><button type="button" className="v4-secondary-text-button" disabled={busy || !amounts[g.id]} onClick={() => allocate(g, "RELEASE")}>Rút phân bổ</button></div>}
+        <div className="finance-actions" style={{ marginTop: 17 }}><ActionMenu label={`Thao tác mục tiêu ${g.name}`} disabled={busy} items={[
+          { label: "Sửa mục tiêu", icon: Pencil, onSelect: () => begin(g) },
+          { label: g.archived ? "Khôi phục" : "Lưu trữ", icon: g.archived ? RotateCcw : Archive, danger: !g.archived, onSelect: () => archive(g) },
+        ]} /></div>
         {!!g.events.length && <details style={{ marginTop: 15 }}><summary style={{ cursor: "pointer", color: "#1E5EFF" }}>Lịch sử phân bổ ({g.events.length} gần nhất)</summary><div className="table-wrap"><table><thead><tr><th>Ngày giờ</th><th>Nghiệp vụ</th><th>Số tiền</th></tr></thead><tbody>{g.events.map(e => <tr key={e.id}><td>{new Date(e.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</td><td>{e.kind === "ALLOCATE" ? "Dành tiền" : "Rút phân bổ"}</td><td>{formatVnd(e.amount)}</td></tr>)}</tbody></table></div></details>}
       </article>)}
     </div>

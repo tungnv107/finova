@@ -2,6 +2,8 @@ import Link from "next/link";
 import { AdminSubscriptionDecision } from "@/components/admin-subscription-actions";
 import { getSubscriptionOperations, listSubscriptionActionPage, listSubscriptionLifecycle } from "@/modules/billing/manual-subscriptions";
 import { requireAdminPageRole } from "@/server/admin-page";
+import { StatusBadge } from "@/components/ui/interaction-controls";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 const vietnamTime = (d: Date) => new Intl.DateTimeFormat("vi-VN", {
@@ -31,10 +33,10 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
       <div className="card card-pad"><span className="hero-label">GRANT THỦ CÔNG HIỆU LỰC</span><div className="kpi-value">{n(summary.activeManualGrants)}</div>
         <p className="section-subtitle">Số lượt cấp quyền, không phải số người dùng duy nhất.</p></div>
     </div>
-    <nav className="admin-shortcuts" aria-label="Lọc trạng thái đề xuất">
-      <Link className="button button-outline" href="/admin/subscriptions">Chờ duyệt</Link>
-      <Link className="button button-outline" href="/admin/subscriptions?status=APPROVED">Đã duyệt</Link>
-      <Link className="button button-outline" href="/admin/subscriptions?status=REJECTED">Từ chối</Link>
+    <nav className="v4-admin-subnav" aria-label="Lọc trạng thái đề xuất">
+      <Link href="/admin/subscriptions" aria-current={status === "PENDING" ? "page" : undefined}>Chờ duyệt</Link>
+      <Link href="/admin/subscriptions?status=APPROVED" aria-current={status === "APPROVED" ? "page" : undefined}>Đã duyệt</Link>
+      <Link href="/admin/subscriptions?status=REJECTED" aria-current={status === "REJECTED" ? "page" : undefined}>Từ chối</Link>
     </nav>
     <section className="card card-pad" style={{ marginTop: 20 }}>
       <div className="table-wrap" tabIndex={0} role="region" aria-label="Danh sách yêu cầu Premium"><table><thead><tr><th>Người dùng</th><th>Yêu cầu</th><th>Lý do</th>
@@ -44,9 +46,9 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
           <td>{a.kind === "MANUAL_GRANT" ? `${a.requestedBy === a.userId ? "Đăng ký Premium" : "Cấp bù"} ${a.billingPeriod === "MONTH" ? "1 tháng" : "1 năm"}` : "Thu hồi grant thủ công"}</td>
           <td><p>{a.reason}</p><span className="section-subtitle">{a.requestedBy === a.userId ? "Người dùng tự đăng ký" : `Đề xuất bởi ${a.requestedBy}`}</span></td>
           <td>{vietnamTime(a.createdAt)}<br />{vietnamTime(a.expiresAt)}</td>
-          <td>{a.status === "PENDING" ? (a.expiresAt <= new Date() ? "Đề xuất quá hạn" :
-            <AdminSubscriptionDecision id={a.id} canReview={actor.role === "SUPER_ADMIN" && actor.userId !== a.requestedBy && actor.userId !== a.userId} />) :
-            <><strong>{a.status === "APPROVED" ? "Đã duyệt" : "Từ chối"}</strong><br />
+          <td>{a.status === "PENDING" ? (a.expiresAt <= new Date() ? <StatusBadge tone="warning">Đề xuất quá hạn</StatusBadge> :
+            <><StatusBadge tone="warning">Chờ duyệt</StatusBadge><AdminSubscriptionDecision id={a.id} canReview={actor.role === "SUPER_ADMIN" && actor.userId !== a.requestedBy && actor.userId !== a.userId} /></>) :
+            <><StatusBadge tone={a.status === "APPROVED" ? "success" : "danger"}>{a.status === "APPROVED" ? "Đã duyệt" : "Từ chối"}</StatusBadge><br />
               <span className="section-subtitle">{a.reviewedBy} · {a.reviewedAt ? vietnamTime(a.reviewedAt) : "—"}</span>
               {a.reviewReason && <p>{a.reviewReason}</p>}</>}</td>
         </tr>)}
@@ -54,8 +56,8 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
       {!actions.items.length && <p className="section-subtitle">Chưa có đề xuất ở trạng thái này.</p>}
       <p className="section-subtitle">Với đăng ký từ người dùng, chỉ phê duyệt sau khi đã tự xác minh điều kiện và thanh toán qua kênh chính thức. Phê duyệt thủ công không tạo doanh thu, đơn hàng hay xác nhận ngân hàng trong Finova.</p>
       <div className="admin-shortcuts">
-        {params.actionCursor && <Link className="button button-outline" href={`/admin/subscriptions?status=${status}${params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""}`}>Trang đầu đề xuất</Link>}
-        {actions.nextCursor && <Link className="button button-outline" href={`/admin/subscriptions?status=${status}&actionCursor=${encodeURIComponent(actions.nextCursor)}${params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""}`}>Xem 50 đề xuất tiếp</Link>}
+        {params.actionCursor && <Link className="v4-pagination-link" href={`/admin/subscriptions?status=${status}${params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""}`}><ChevronLeft size={15} aria-hidden="true" />Trang đầu đề xuất</Link>}
+        {actions.nextCursor && <Link className="v4-pagination-link" href={`/admin/subscriptions?status=${status}&actionCursor=${encodeURIComponent(actions.nextCursor)}${params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""}`}>Xem 50 đề xuất tiếp<ChevronRight size={15} aria-hidden="true" /></Link>}
       </div>
       <p className="section-subtitle">Thu hồi giao dịch có phí thuộc quy trình hoàn tiền/tranh chấp riêng. Cấp bù không tính doanh thu ngân hàng.</p>
     </section>
@@ -71,8 +73,8 @@ export default async function AdminSubscriptionActionsPage({ searchParams }: {
       </tbody></table></div>
       {!timeline.items.length && <p className="section-subtitle">Chưa có sự kiện Premium.</p>}
       <div className="admin-shortcuts">
-        {params.cursor && <Link className="button button-outline" href={`/admin/subscriptions?status=${status}`}>Trang đầu lịch sử</Link>}
-        {timeline.nextCursor && <Link className="button button-outline" href={`/admin/subscriptions?status=${status}&cursor=${encodeURIComponent(timeline.nextCursor)}`}>Xem 50 sự kiện tiếp</Link>}
+        {params.cursor && <Link className="v4-pagination-link" href={`/admin/subscriptions?status=${status}`}><ChevronLeft size={15} aria-hidden="true" />Trang đầu lịch sử</Link>}
+        {timeline.nextCursor && <Link className="v4-pagination-link" href={`/admin/subscriptions?status=${status}&cursor=${encodeURIComponent(timeline.nextCursor)}`}>Xem 50 sự kiện tiếp<ChevronRight size={15} aria-hidden="true" /></Link>}
       </div>
     </section>
   </div>;

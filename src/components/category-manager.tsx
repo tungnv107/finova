@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Tags } from "lucide-react";
+import { Archive, Pencil, Plus, RotateCcw, Tags } from "lucide-react";
+import { ActionMenu, ContentTabs } from "@/components/ui/interaction-controls";
 
 type Category = { id: string; parentId: string | null; name: string; kind: "INCOME" | "EXPENSE"; icon: string; color: string; archived: boolean };
 const iconChoices = ["Circle", "Briefcase", "Gift", "Store", "TrendingUp", "Wallet", "Utensils", "Car", "House", "Receipt", "ShoppingBag", "Clapperboard", "GraduationCap", "HeartPulse", "Users", "Plane"];
@@ -54,12 +55,14 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
   const [icon, setIcon] = useState("Circle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [activeType, setActiveType] = useState<Category["kind"]>("EXPENSE");
 
   function beginEdit(category: Category) {
+    setActiveType(category.kind);
     setEditing(category.id); setAdding(false); setName(category.name); setIcon(category.icon); setColor(category.color); setKind(category.kind); setParentId(category.parentId ?? ""); setError("");
   }
   function beginAdd() {
-    setEditing(null); setAdding(true); setName(""); setIcon("Circle"); setColor("#1E5EFF"); setKind("EXPENSE"); setParentId(""); setError("");
+    setEditing(null); setAdding(true); setName(""); setIcon("Circle"); setColor("#1E5EFF"); setKind(activeType); setParentId(""); setError("");
   }
   async function request(url: string, method: "POST" | "PATCH", body: object) {
     const result = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -98,12 +101,18 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
       <div className="form-footer"><button className="button button-primary" disabled={busy}>{busy ? "Đang lưu…" : "Lưu danh mục"}</button></div>
     </form>}
     {!adding && !editing && error && <div role="alert" className="form-error">{error}</div>}
-    {(["EXPENSE", "INCOME"] as const).map(type => <section key={type} className="card card-pad module-record" style={{ marginBottom: 20 }}>
+    <ContentTabs idBase="category-kind" label="Nhóm danh mục" value={activeType} onChange={setActiveType} options={[
+      { value: "EXPENSE", label: "Chi tiêu" }, { value: "INCOME", label: "Thu nhập" },
+    ]} />
+    {(["EXPENSE", "INCOME"] as const).filter(type => type === activeType).map(type => <section key={type} role="tabpanel" id={`category-kind-panel-${type}`} aria-labelledby={`category-kind-tab-${type}`} tabIndex={0} className="card card-pad module-record v4-tab-panel" style={{ marginBottom: 20 }}>
       <div className="section-header"><h2 className="section-title">{type === "EXPENSE" ? "Danh mục chi tiêu" : "Danh mục thu nhập"}</h2><span className="pill">{categories.filter(c => c.kind === type && !c.archived).length} đang sử dụng</span></div>
       {categories.filter(c => c.kind === type).length === 0 ? <div className="empty"><Tags /><strong>Chưa có danh mục</strong></div> : <div className="legend-list">
         {categoryTreeRows(categories, type).map(({ category, depth }) => <div key={category.id} className={`legend-row category-row ${category.archived ? "module-record-archived" : ""}`}>
           <span className="legend-label" style={{ paddingLeft: Math.min(depth, 3) * 12 }}><span aria-hidden="true">{depth > 0 ? "↳ " : ""}</span><span className="legend-dot" style={{ backgroundColor: category.color }} />{category.name}{category.archived && <span className="pill">Đã lưu trữ</span>}</span>
-          <span className="category-row-actions"><button type="button" className="button button-outline" disabled={busy} onClick={() => beginEdit(category)}>Sửa</button><button type="button" className="button button-outline" disabled={busy} onClick={() => toggle(category)}>{category.archived ? "Khôi phục" : "Lưu trữ"}</button></span>
+          <span className="category-row-actions"><ActionMenu label={`Thao tác danh mục ${category.name}`} disabled={busy} items={[
+            { label: "Sửa danh mục", icon: Pencil, onSelect: () => beginEdit(category) },
+            { label: category.archived ? "Khôi phục" : "Lưu trữ", icon: category.archived ? RotateCcw : Archive, danger: !category.archived, onSelect: () => toggle(category) },
+          ]} /></span>
         </div>)}
       </div>}
     </section>)}

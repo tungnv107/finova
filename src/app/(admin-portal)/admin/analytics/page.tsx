@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportMenu } from "@/components/ui/interaction-controls";
 import { requireAdminPageRole } from "@/server/admin-page";
 import { getUsageKpis, usageAnalyticsEnabled } from "@/modules/admin/usage";
 import { getRegistrationCohorts } from "@/modules/admin/cohorts";
@@ -44,14 +45,14 @@ export default async function AdminAnalyticsPage({ searchParams }: {
     <section className="card card-pad" style={{ marginTop: 20 }}>
       <div className="page-head"><div><h3 className="section-title">Lượt xem trang theo ngày</h3>
         <p className="subtitle">Số lượt điều hướng hợp lệ; cùng một người có thể xem nhiều trang trong ngày.</p></div>
-        <nav className="admin-period-links" aria-label="Chọn khoảng thời gian">
+        <nav className="v4-period-nav" aria-label="Chọn khoảng thời gian">
           {([7, 30, 90] as const).map(period => <Link key={period} href={`/admin/analytics?days=${period}`}
-            aria-current={period === days ? "page" : undefined} className={`button ${period === days ? "button-primary" : "button-outline"}`}>{period} ngày</Link>)}
+            aria-current={period === days ? "page" : undefined}>{period} ngày</Link>)}
         </nav></div>
-      <nav className="admin-period-links" aria-label="Xuất thống kê truy cập" style={{ marginBottom: 16 }}>
-        <a className="button button-outline" href={`/api/v1/admin/analytics/export?kind=traffic&format=csv&days=${days}`}>Tải CSV {days} ngày</a>
-        <a className="button button-outline" href={`/api/v1/admin/analytics/export?kind=traffic&format=xlsx&days=${days}`}>Tải Excel {days} ngày</a>
-      </nav>
+      <div className="v4-report-toolbar"><span className="section-subtitle">Dữ liệu trong {days} ngày</span><ExportMenu items={[
+        { label: "Tải CSV", href: `/api/v1/admin/analytics/export?kind=traffic&format=csv&days=${days}` },
+        { label: "Tải Excel", href: `/api/v1/admin/analytics/export?kind=traffic&format=xlsx&days=${days}` },
+      ]} /></div>
       {total === 0 ? <p className="subtitle" role="status">Chưa ghi nhận lượt xem trang trong khoảng thời gian này.</p> :
         <div className="admin-traffic-chart" role="img" aria-label={`Biểu đồ lượt xem trang ${days} ngày, tổng ${format(total)} lượt`}>
           {series.map(day => <div key={day.day} className="admin-traffic-bar"

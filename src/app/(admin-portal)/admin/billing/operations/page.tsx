@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getBillingOperationalAlerts } from "@/modules/admin/billing-operational-alerts";
 import { requireAdminPageRole } from "@/server/admin-page";
+import { AdminBillingSubnav } from "@/components/admin-billing-subnav";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +25,9 @@ export default async function BillingOperationsPage() {
         dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh",
       }).format(data.checkedAt)}. Chỉ hiển thị số lượng tổng hợp.</p>
     </div></div>
-    <div className="admin-operations-toolbar">
-      <Link href="/admin/billing/operations/inbox" className="button button-primary">Hộp cảnh báo đã phân công</Link>
-      <details className="admin-more-actions"><summary>Công cụ liên quan</summary>
-        <div><Link href="/admin/billing/operations">Kiểm tra lại</Link>
-          <Link href="/admin/billing/payments?review=1">Hàng đối soát</Link>
-          <Link href="/admin/billing/notices">Hàng thông báo</Link></div>
-      </details>
+    <AdminBillingSubnav active="operations" />
+    <div className="admin-operations-toolbar v4-admin-context-links">
+      <Link className="text-link" href="/admin/billing/payments?review=1">Xem giao dịch cần kiểm tra →</Link>
     </div>
     {data.alerts.length === 0 ? <section className="card card-pad" role="status" style={{ marginTop: 18 }}>
       <h3 className="section-title">Chưa thấy tín hiệu vượt ngưỡng</h3>
@@ -41,7 +38,7 @@ export default async function BillingOperationsPage() {
         <h3 className="section-title" style={{ marginTop: 8 }}>{alert.title}</h3>
         <div className="kpi-value">{alert.count.toLocaleString("vi-VN")}</div>
         <p className="section-subtitle">{alert.explanation}</p>
-        <Link className="button button-outline" href={alert.href}>Xem và xử lý</Link>
+        <Link className="v4-admin-record-link" href={alert.href}>Xem và xử lý →</Link>
       </section>)}
     </div>}
     <p className="section-subtitle" style={{ marginTop: 18 }}>

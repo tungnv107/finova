@@ -3,7 +3,8 @@
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseCsv } from "@/lib/csv-import";
-import { AlertCircle, ArrowDownLeft, ArrowUpRight, CheckCircle2, ChevronDown, CircleHelp, Clock3, ExternalLink, FileSpreadsheet, Landmark, Link2, LockKeyhole, RefreshCw, Search, ShieldCheck, UploadCloud, Wallet } from "lucide-react";
+import { AlertCircle, ArrowDownLeft, ArrowUpRight, CheckCircle2, ChevronDown, CircleHelp, Clock3, ExternalLink, FileSpreadsheet, Landmark, Link2, LockKeyhole, RefreshCw, Search, ShieldCheck, UploadCloud, Wallet, Pause, Play, Unplug, MoreHorizontal } from "lucide-react";
+import { ActionMenu, ContentTabs } from "@/components/ui/interaction-controls";
 import styles from "./bank-sync.module.css";
 
 type WalletOption = { id: string; name: string; type: string };
@@ -84,6 +85,7 @@ function ReviewCard({ item, wallets, categories, transactions }: { item: Review;
 }
 
 export function BankSyncManager({ wallets, categories, connections, reviews, sources, transactions, sandboxEnabled, sepayEnabled, defaultCutoverDay }: Props) {
+  const [bankView, setBankView] = useState<"connect" | "upload" | "reviews" | "history">("connect");
   const router = useRouter();
   const bankWallets = wallets.filter(w => w.type === "BANK");
   const [file, setFile] = useState<File | null>(null), [headers, setHeaders] = useState<string[]>([]);
@@ -250,7 +252,13 @@ export function BankSyncManager({ wallets, categories, connections, reviews, sou
     {error && <div className={styles.errorNotice} role="alert"><AlertCircle size={19} /><span>{error}</span></div>}
     {message && <div className={styles.successNotice} role="status"><CheckCircle2 size={19} /><span>{message}</span></div>}
 
-    <div className={styles.setupGrid}>
+    <ContentTabs idBase="bank-view" label="Nhóm thông tin đồng bộ ngân hàng" value={bankView} onChange={setBankView} options={[
+      { value: "connect", label: `Kết nối (${connections.length})` }, { value: "upload", label: "Nhập tệp" },
+      { value: "reviews", label: `Cần đối soát (${reviews.length})` }, { value: "history", label: "Lịch sử" },
+    ]} />
+
+    {bankView === "upload" && <div id="bank-view-panel-upload" role="tabpanel" aria-labelledby="bank-view-tab-upload" tabIndex={0} className="v4-bank-section">
+    <div className={`${styles.setupGrid} v4-bank-single`}>
       <section className={`${styles.panel} card`} aria-labelledby="bank-upload-heading">
         <div className={styles.panelHeader}><span className={`${styles.panelIcon} ${styles.iconBlue}`}><UploadCloud size={23} /></span><div><span className={styles.eyebrow}>NHẬP SAO KÊ</span><h2 id="bank-upload-heading">Tải tệp CSV / XLSX</h2><p>Nhập sao kê có sẵn từ ngân hàng của bạn.</p></div></div>
         <label htmlFor="bank-statement-file" className={styles.uploadZone}>
@@ -279,7 +287,10 @@ export function BankSyncManager({ wallets, categories, connections, reviews, sou
           </tbody></table></div><p className={styles.muted}>Hiển thị tối đa 100 dòng. Dòng lỗi sẽ không được đưa vào hàng chờ.</p>
           <div className={styles.panelActions}><button type="button" className="button button-primary" disabled={busy || !preview.validCount} onClick={() => void upload("commit")}><CheckCircle2 size={16} /> Xác nhận đưa vào hàng đợi</button></div></div>}
       </section>
+    </div></div>}
 
+    {bankView === "connect" && <div id="bank-view-panel-connect" role="tabpanel" aria-labelledby="bank-view-tab-connect" tabIndex={0} className="v4-bank-section">
+    <div className={`${styles.setupGrid} v4-bank-single`}>
       {sepayEnabled ? <section className={`${styles.panel} card`} aria-labelledby="sepay-heading">
         <div className={styles.panelHeader}><span className={`${styles.panelIcon} ${styles.iconTeal}`}><Landmark size={23} /></span><div><span className={styles.eyebrow}>KẾT NỐI TỰ ĐỘNG</span><h2 id="sepay-heading">SePay Bank Hub</h2><p>Liên kết tài khoản và đồng bộ biến động số dư.</p></div>
           <span className={hasActiveSePay ? styles.statusSuccess : styles.statusNeutral}>{hasActiveSePay ? "Đang kết nối" : "Chưa kết nối"}</span></div>
@@ -316,18 +327,29 @@ export function BankSyncManager({ wallets, categories, connections, reviews, sou
           <p>{c.accounts.length ? c.accounts.map(a => `${a.accountMasked} · ${wallets.find(w => w.id === a.walletId)?.name || "Chưa gắn ví"}`).join(" · ") : "Chưa có tài khoản được gắn ví"}</p>
           <div className={styles.connectionMeta}><span>Chính sách: {c.postingPolicy === "REVIEW_FIRST" ? "Duyệt trước khi ghi sổ" : c.postingPolicy}</span><span>Mốc bắt đầu: {c.cutoverAt ? formatDate(c.cutoverAt) : "—"}</span><span>Đồng bộ gần nhất: {c.lastSyncedAt ? formatDate(c.lastSyncedAt) : "Chưa có"}</span></div>
         </div></div>
-        {c.status !== "REVOKED" && <div className={styles.connectionActions}><button className="button button-outline" type="button" disabled={busy} onClick={() => void changeConnection(c.id, c.status === "ACTIVE" ? "PAUSE" : "RESUME")}>{c.status === "ACTIVE" ? "Tạm dừng" : "Tiếp tục"}</button><button className="button button-outline" type="button" disabled={busy} onClick={() => void changeConnection(c.id, "REVOKE")}>{c.providerCode === "SEPAY_BANKHUB" ? "Dừng đồng bộ Finova" : "Ngắt nguồn"}</button>
-          {c.providerCode === "SEPAY_BANKHUB" && <button type="button" className="button button-outline" disabled={busy} onClick={() => void refreshSePay(c.id)}><RefreshCw size={15} /> Kiểm tra SePay</button>}
-          {c.providerCode === "SEPAY_BANKHUB" && c.accounts.filter(a => a.status === "ACTIVE").map(a => <Fragment key={a.id}><button type="button" className="button button-outline" disabled={busy} onClick={() => void startSePayUnlink(c.id, a.id)}>Hủy trên SePay · {a.accountMasked}</button>{unlinkLink?.accountId === a.id && <a className="button button-primary" href={unlinkLink.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> Xác nhận hủy</a>}</Fragment>)}
-        </div>}
+        {c.status !== "REVOKED" && <div className={styles.connectionActions}>
+  <ActionMenu label={`Thao tác nguồn ${c.id.slice(-8)}`} icon={MoreHorizontal} prominent disabled={busy} items={[
+    { label: c.status === "ACTIVE" ? "Tạm dừng" : "Tiếp tục", icon: c.status === "ACTIVE" ? Pause : Play,
+      onSelect: () => void changeConnection(c.id, c.status === "ACTIVE" ? "PAUSE" : "RESUME") },
+    ...(c.providerCode === "SEPAY_BANKHUB" ? [{ label: "Kiểm tra SePay", icon: RefreshCw, onSelect: () => void refreshSePay(c.id) }] : []),
+    ...((c.providerCode === "SEPAY_BANKHUB" ? c.accounts.filter(a => a.status === "ACTIVE") : []).map(a => ({
+      label: `Hủy trên SePay · ${a.accountMasked}`, icon: Unplug, danger: true, onSelect: () => void startSePayUnlink(c.id, a.id),
+    }))),
+    { label: c.providerCode === "SEPAY_BANKHUB" ? "Dừng đồng bộ Finova" : "Ngắt nguồn", icon: Unplug, danger: true,
+      onSelect: () => void changeConnection(c.id, "REVOKE") },
+  ]} />
+  {unlinkLink && c.accounts.some(a => a.id === unlinkLink.accountId) && <a className="button button-primary" href={unlinkLink.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> Xác nhận hủy trên SePay</a>}
+</div>}
         {c.providerCode === "SEPAY_BANKHUB" && <p className={styles.connectionFootnote}>Ngắt tại Finova chỉ dừng tiếp nhận sao kê. Để thu hồi quyền phía ngân hàng, cần hoàn tất xác nhận hủy trên SePay.</p>}
       </article>)}</div>}
-    </section>
+    </section></div>}
 
+    {bankView === "reviews" && <div id="bank-view-panel-reviews" role="tabpanel" aria-labelledby="bank-view-tab-reviews" tabIndex={0} className="v4-bank-section">
     <section className={styles.recordsSection} aria-labelledby="reviews-heading"><div className={styles.sectionHeading}><div><span className={styles.eyebrow}>ĐỐI SOÁT GIAO DỊCH</span><h2 id="reviews-heading">Cần xác nhận <span>{reviews.length}</span></h2><p>Xem xét giao dịch ngân hàng trước khi đưa vào sổ thu chi.</p></div></div>
       {!reviews.length ? <div className={styles.emptyState}><CheckCircle2 size={28} /><strong>Không có giao dịch chờ xác nhận</strong><p>Những dòng sao kê đã nhập sẽ xuất hiện ở đây sau khi hệ thống xử lý.</p></div> : <div className={styles.reviewList}>{reviews.map(r => <ReviewCard key={r.id} item={r} wallets={wallets} categories={categories} transactions={transactions} />)}</div>}
-    </section>
+    </section></div>}
 
+    {bankView === "history" && <div id="bank-view-panel-history" role="tabpanel" aria-labelledby="bank-view-tab-history" tabIndex={0} className="v4-bank-section">
     <section className={`${styles.sourcePanel} card`} aria-labelledby="history-heading"><div className={styles.sectionHeading}><div><span className={styles.eyebrow}>NHẬT KÝ ĐỒNG BỘ</span><h2 id="history-heading">Lịch sử sao kê <span>{sources.length}</span></h2><p>Tra cứu tối đa 50 dòng gần nhất cùng thông tin nguồn gốc để đối chiếu.</p></div></div>
       {sources.length > 0 && <div className={styles.filters}><div className="field"><label htmlFor="bank-source-query">Tìm giao dịch</label><div className={styles.searchField}><Search size={17} /><input id="bank-source-query" value={sourceQuery} onChange={e => setSourceQuery(e.target.value)} placeholder="Diễn giải, tài khoản, mã tham chiếu..." /></div></div>
         <div className="field"><label htmlFor="bank-source-direction">Chiều tiền</label><select id="bank-source-direction" value={sourceDirection} onChange={e => setSourceDirection(e.target.value)}><option value="ALL">Tất cả</option><option value="IN">Tiền vào</option><option value="OUT">Tiền ra</option></select></div>
@@ -340,6 +362,6 @@ export function BankSyncManager({ wallets, categories, connections, reviews, sou
             {expandedSourceId === s.id && <tr><td colSpan={6}><div className={styles.sourceDetails} role="region" aria-label={`Thông tin nguồn ${s.id}`}><p><strong>Mã nguồn:</strong> {s.id}</p><p><strong>Mã tham chiếu:</strong> {s.bankReference || "Không có"} · <strong>Phiên bản:</strong> {s.sourceVersion}</p><p><strong>Nhận lúc:</strong> {formatDate(s.receivedAt)} · <strong>Sự kiện gốc:</strong> {s.rawEventId || "Không có"}</p><p><strong>Giao dịch sổ cái:</strong> {s.linkedIds.length ? s.linkedIds.join(", ") : "Chưa liên kết"}</p></div></td></tr>}
           </Fragment>)}
         </tbody></table></div>}
-    </section>
+    </section></div>}
   </div>;
 }

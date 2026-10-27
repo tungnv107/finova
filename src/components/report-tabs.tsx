@@ -4,7 +4,8 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Download, ArrowLeftRight, Eye, EyeOff } from "lucide-react";
+import { ArrowLeftRight, Eye, EyeOff } from "lucide-react";
+import { SegmentedControl, ExportMenu } from "@/components/ui/interaction-controls";
 import { formatVnd } from "@/lib/money";
 import { FinancialPrivacyContext } from "@/components/financial-privacy-context";
 import type { overview } from "@/server/reporting";
@@ -54,9 +55,9 @@ export function ReportTabs({ report, heatmap, trends, budgets, children }: {
 
   return <FinancialPrivacyContext.Provider value={{ showBalance, setShowBalance }}>
     <div className="report-tabs-toolbar">
-    <div role="tablist" aria-label="Các nhóm báo cáo" className="report-tabs-list">
+    <div role="tablist" aria-label="Các nhóm báo cáo" className="report-tabs-list v4-tablist">
       {tabs.map((label, index) => <button type="button" role="tab" id={`report-tab-${index}`} aria-controls="report-tab-panel" aria-selected={tab === index} tabIndex={tab === index ? 0 : -1} key={label}
-        className={`button ${tab === index ? "button-primary" : "button-outline"}`} onKeyDown={event => handleTabKeyDown(event, index)} onClick={() => setTab(index)}>{label}</button>)}
+        onKeyDown={event => handleTabKeyDown(event, index)} onClick={() => setTab(index)}>{label}</button>)}
     </div>
     <button type="button" className="button button-outline report-privacy-toggle" aria-pressed={!showBalance} onClick={() => setShowBalance(value => !value)}>
       {showBalance ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
@@ -64,14 +65,18 @@ export function ReportTabs({ report, heatmap, trends, budgets, children }: {
     </button>
     </div>
     {!showBalance && <p className="report-privacy-hint" role="note">Chỉ ẩn số liệu trên màn hình. Tệp CSV, Excel và PDF xuất ra vẫn chứa dữ liệu tài chính đầy đủ.</p>}
+    <div className="v4-report-toolbar"><span className="section-subtitle">Xuất dữ liệu theo kỳ và bộ lọc hiện tại</span><ExportMenu items={[
+      { label: "Tải CSV", href: `/api/v1/exports/transactions.csv?${query.toString()}` },
+      { label: "Tải Excel", href: `/api/v1/exports/reports.xlsx?${query.toString()}` },
+      { label: "Tải PDF", href: `/api/v1/exports/reports.pdf?${query.toString()}` },
+    ]} /></div>
     <div id="report-tab-panel" role="tabpanel" aria-labelledby={`report-tab-${tab}`} tabIndex={0}>
     {tab !== 0 && !showBalance && <section className="card card-pad dashboard-private-state" role="status">
       <EyeOff size={24} aria-hidden="true" /><div><strong>Đang ẩn thông tin tài chính</strong><p className="subtitle">Chọn “Hiện số liệu” để xem dữ liệu và biểu đồ trong báo cáo.</p></div>
     </section>}
     <div className="report-private-content" hidden={tab !== 0 && !showBalance}>
     {tab === 0 ? children : <>
-      <div className="page-head"><div><h1 className="page-title">{tabs[tab]}</h1><p className="subtitle">Các số liệu lấy từ sổ cái trong workspace của bạn.</p></div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}><a className="button button-soft" href={`/api/v1/exports/transactions.csv?${query.toString()}`}><Download size={17} /> CSV</a><a className="button button-soft" href={`/api/v1/exports/reports.xlsx?${query.toString()}`}>Excel</a><a className="button button-soft" href={`/api/v1/exports/reports.pdf?${query.toString()}`}>PDF</a></div></div>
+      <div className="page-head"><div><h1 className="page-title">{tabs[tab]}</h1><p className="subtitle">Các số liệu lấy từ sổ cái trong workspace của bạn.</p></div></div>
       <form className="card filterbar" onSubmit={e => { e.preventDefault(); const next = new URLSearchParams(query); next.set("start", start); next.set("endExclusive", endExclusive); router.push(`/reports?${next.toString()}`); }}>
         <div className="field"><label htmlFor="report-tab-start">Từ ngày</label><input id="report-tab-start" type="date" required value={start} onChange={e => setStart(e.target.value)} /></div>
         <div className="field"><label htmlFor="report-tab-end">Đến trước ngày</label><input id="report-tab-end" type="date" required min={start} value={endExclusive} onChange={e => setEndExclusive(e.target.value)} /></div>
@@ -79,7 +84,6 @@ export function ReportTabs({ report, heatmap, trends, budgets, children }: {
         <Link className="button button-outline" href={`/reports?${query.toString()}`}>Bộ lọc ví / danh mục</Link>
       </form>
     </>}
-    {tab === 0 && <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "-4px 0 20px" }}><a className="button button-soft" href={`/api/v1/exports/transactions.csv?${query.toString()}`}><Download size={17} /> CSV</a><a className="button button-soft" href={`/api/v1/exports/reports.xlsx?${query.toString()}`}>Excel</a><a className="button button-soft" href={`/api/v1/exports/reports.pdf?${query.toString()}`}>PDF</a></div>}
     {tab === 1 && <div className="grid-half">
       <section className="card card-pad"><h2 className="section-title">Thu nhập và chi phí trong kỳ</h2>
         <p className="subtitle">Thặng dư thu – chi là {formatVnd(report.kpis.surplus)}. Chuyển ví và số dư đầu kỳ không tính vào thu/chi.</p>
@@ -100,7 +104,7 @@ export function ReportTabs({ report, heatmap, trends, budgets, children }: {
       {report.categories.length ? <div className="table-wrap"><table><thead><tr><th>DANH MỤC</th><th>CHI PHÍ RÒNG</th><th>GIAO DỊCH</th></tr></thead><tbody>{report.categories.map(c => <tr key={c.id}><td>{c.name}</td><td>{formatVnd(c.amount)}</td><td><Link className="text-link" href={filteredTransactionLink(c.id)}>Xem chi tiết →</Link></td></tr>)}</tbody></table></div> : <div className="empty">Chưa có khoản chi trong kỳ.</div>}
     </section>}
     {tab === 4 && <div style={{ display: "grid", gap: 20 }}>
-      <section className="card card-pad"><div className="section-header"><div><h2 className="section-title">Xu hướng theo tháng</h2><p className="subtitle">Kết thúc ở tháng chứa ngày cuối cùng của kỳ đã chọn.</p></div><div style={{ display: "flex", gap: 8 }}><button type="button" className={`button ${months === 6 ? "button-primary" : "button-outline"}`} onClick={() => setMonths(6)}>6 tháng</button><button type="button" className={`button ${months === 12 ? "button-primary" : "button-outline"}`} onClick={() => setMonths(12)}>12 tháng</button></div></div>
+      <section className="card card-pad"><div className="section-header"><div><h2 className="section-title">Xu hướng theo tháng</h2><p className="subtitle">Kết thúc ở tháng chứa ngày cuối cùng của kỳ đã chọn.</p></div><SegmentedControl label="Số tháng theo dõi" value={String(months)} options={[{ value: "6", label: "6 tháng" }, { value: "12", label: "12 tháng" }]} onChange={next => setMonths(next === "6" ? 6 : 12)} /></div>
         <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={trendRows}><CartesianGrid stroke="var(--finova-chart-grid)" strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis width={70} /><Tooltip contentStyle={{ background: "var(--finova-surface-raised)", border: "1px solid var(--finova-border)", borderRadius: 12, color: "var(--finova-text)" }} formatter={moneyTooltip} /><Legend /><Bar name="Thu" dataKey="income" fill="var(--finova-income)" /><Bar name="Chi" dataKey="expense" fill="var(--finova-expense)" /></BarChart></ResponsiveContainer></div>
       </section>
       <section className="card card-pad"><h2 className="section-title">Lịch chi tiêu theo ngày</h2><p className="subtitle" style={{ marginBottom: 14 }}>Chọn một ngày để xem giao dịch. Màu đậm biểu thị chi phí ròng cao hơn trong khoảng đã chọn.</p>

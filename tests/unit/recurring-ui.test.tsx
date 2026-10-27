@@ -3,6 +3,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { RecurringManager } from "@/components/recurring-manager";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+// Inspect contextual actions passed to the overflow menu; the actual menu stays closed until interaction.
+vi.mock("@/components/ui/interaction-controls", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/ui/interaction-controls")>();
+  return { ...actual, ActionMenu: ({ label, items }: { label: string; items: { label: string }[] }) =>
+    <span aria-label={label}>{items.map(item => item.label).join(", ")}</span> };
+});
 
 const rule = {
   id: "rule-a", name: "Tiền nhà", frequency: "MONTHLY", interval: 1, mode: "CONFIRM", kind: "EXPENSE",
@@ -13,7 +19,7 @@ function render(periodKey: string, status = "PENDING", transactionId: string | n
   return renderToStaticMarkup(<RecurringManager data={{ rules: [rule], occurrences: [{
     id: "occurrence-a", periodKey, status, transactionId,
     rule: { name: rule.name, kind: rule.kind, mode: rule.mode, paused: false, amount: rule.amount },
-  }] }} wallets={[{ id: "wallet-a", name: "Ví tiền" }]} categories={[]} />);
+  }] }} wallets={[{ id: "wallet-a", name: "Ví tiền" }]} categories={[]} initialTab={status === "PENDING" ? "pending" : "history"} />);
 }
 
 describe("recurring action visibility", () => {
@@ -21,7 +27,7 @@ describe("recurring action visibility", () => {
     const html = render("2099-01-01");
     expect(html).toContain("Bỏ qua");
     expect(html).not.toContain("Ghi nhận");
-    expect(html).toContain("Chỉnh sửa</button>");
+    expect(html).toContain("Chờ ghi nhận");
   });
 
   it("allows confirmation and skip for a due occurrence", () => {

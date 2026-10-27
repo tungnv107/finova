@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { requireAdminPageRole } from "@/server/admin-page";
 import { AdminBillingNoticeRequeue } from "@/components/admin-billing-notice-requeue";
+import { AdminBillingSubnav } from "@/components/admin-billing-subnav";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export default async function AdminBillingNoticesPage() {
     <div className="page-head"><div><h2 className="page-title">Thông báo kích hoạt cần xử lý</h2>
       <p className="subtitle">Thông báo nội bộ được ghi cùng giao dịch cấp quyền Premium. Gửi thất bại sẽ thử lại theo lịch và vào DLQ sau 6 lần.</p>
     </div></div>
+    <AdminBillingSubnav active="notices" />
     <section className="card card-pad">
       <h3 className="section-title">Hàng lỗi ({total})</h3>
       {rows.length === 0 ? <p className="section-subtitle">Không có thông báo đang chờ xử lý thủ công.</p> :

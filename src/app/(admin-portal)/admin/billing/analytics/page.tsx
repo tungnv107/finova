@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ExportMenu } from "@/components/ui/interaction-controls";
 import { getBillingAnalytics } from "@/modules/admin/billing-analytics";
 import { requireAdminPageRole } from "@/server/admin-page";
 
@@ -42,8 +43,8 @@ export default async function BillingAnalyticsPage({ searchParams }: {
       <h2 className="page-title">Phân tích thu phí Premium</h2>
       <p className="subtitle">Số liệu tổng hợp theo ngày Việt Nam · {report.fromVn} đến {report.untilVn}. Không hiển thị người dùng, giao dịch ngân hàng hoặc mã đơn.</p>
     </div></div>
-    <nav className="admin-period-links" aria-label="Chọn khoảng thời gian thu phí">
-      {([7, 30, 90] as const).map(period => <Link className={`button ${period === days ? "button-primary" : "button-outline"}`}
+    <nav className="v4-period-nav" aria-label="Chọn khoảng thời gian thu phí">
+      {([7, 30, 90] as const).map(period => <Link
         href={`/admin/billing/analytics?days=${period}`} aria-current={period === days ? "page" : undefined} key={period}>
         {period} ngày</Link>)}
     </nav>
@@ -78,8 +79,8 @@ export default async function BillingAnalyticsPage({ searchParams }: {
         Số liệu không bao gồm dòng tiền hoàn thực tế, chênh lệch thuế hoặc doanh thu thuần.
       </p>
       <div className="admin-shortcuts">
-        <Link href="/admin/billing/payments?review=1" className="button button-outline">Kiểm tra hàng ngoại lệ</Link>
-        <a className="button button-outline" href={`/api/v1/admin/analytics/export?kind=billing&format=csv&days=${days}`}>Tải tổng hợp CSV</a>
+        <Link href="/admin/billing/payments?review=1" className="text-link">Kiểm tra hàng ngoại lệ →</Link>
+        <ExportMenu items={[{ label: "Tải tổng hợp CSV", href: `/api/v1/admin/analytics/export?kind=billing&format=csv&days=${days}` }]} />
       </div>
     </section>
   </div>;

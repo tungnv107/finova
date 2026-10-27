@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { listBillingOrdersForOperations, parseBillingOrderFilter } from "@/modules/admin/billing-investigation";
 import { requireAdminPageRole } from "@/server/admin-page";
+import { AdminBillingSubnav } from "@/components/admin-billing-subnav";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 const time = (value: Date | null) => value ? new Intl.DateTimeFormat("vi-VN", {
@@ -29,6 +31,7 @@ export default async function BillingOrdersPage({ searchParams }: {
     <div className="page-head"><div><h2 className="page-title">Đơn thu phí Premium</h2>
       <p className="subtitle">Theo dõi đơn, thời hạn và trạng thái kích hoạt. Không hiển thị tài khoản hoặc số dư của người dùng.</p>
     </div></div>
+    <AdminBillingSubnav active="orders" />
     <form method="GET" className="admin-order-filter" aria-label="Lọc trạng thái đơn">
       <label htmlFor="admin-order-status">Trạng thái đơn</label>
       <select id="admin-order-status" name="status" defaultValue={status ?? ""}>
@@ -56,9 +59,9 @@ export default async function BillingOrdersPage({ searchParams }: {
       </div>
       {result.orders.length === 0 && <p role="status" className="subtitle">Không có đơn thuộc bộ lọc.</p>}
       <div className="admin-pagination">
-        {page > 0 && <Link className="button button-outline" href={href(page - 1)}>Trang trước</Link>}
+        {page > 0 && <Link className="v4-pagination-link" href={href(page - 1)}><ChevronLeft size={17} aria-hidden="true" /> Trang trước</Link>}
         <span className="section-subtitle">Trang {page + 1}</span>
-        {(page + 1) * result.pageSize < result.total && <Link className="button button-outline" href={href(page + 1)}>Trang tiếp</Link>}
+        {(page + 1) * result.pageSize < result.total && <Link className="v4-pagination-link" href={href(page + 1)}>Trang tiếp <ChevronRight size={17} aria-hidden="true" /></Link>}
       </div>
     </section>
   </div>;

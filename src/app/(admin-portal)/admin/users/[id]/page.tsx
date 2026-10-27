@@ -6,6 +6,8 @@ import { getAdminUser } from "@/modules/admin/users";
 import { requireAdminPageRole } from "@/server/admin-page";
 import { HttpError } from "@/server/context";
 import { userManagementRoles } from "@/server/system-auth";
+import { ArrowLeft, ChevronRight } from "lucide-react";
+import { StatusBadge } from "@/components/ui/interaction-controls";
 
 export const dynamic = "force-dynamic";
 const vnDate = (value: Date | null) => value ? new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "medium", timeStyle: "short" }).format(value) : "—";
@@ -19,12 +21,12 @@ export default async function AdminUserDetail({ params }: { params: Promise<{ id
     (actor.role !== "SUPER_ADMIN" && user.systemRoles.some(r => r.role === "ADMIN"));
   return <div>
     <div className="page-head"><div><h2 className="page-title">{user.name}</h2><p className="subtitle">{user.email}</p></div>
-      <Link className="button button-outline" href="/admin/users">Quay lại danh sách</Link></div>
+      <Link className="v4-admin-record-link" href="/admin/users"><ArrowLeft size={16} aria-hidden="true" />Quay lại danh sách</Link></div>
     <div className="grid-half admin-detail-grid">
       <section className="card card-pad"><h3 className="section-title">Hồ sơ và gói tài khoản</h3>
         <div className="legend-list">
-          <div className="legend-row"><span>Trạng thái</span><strong>{user.accessState.status}</strong></div>
-          <div className="legend-row"><span>Gói</span><strong>{user.plan}</strong></div>
+          <div className="legend-row"><span>Trạng thái</span><StatusBadge tone={user.accessState.status === "ACTIVE" ? "success" : "warning"}>{user.accessState.status}</StatusBadge></div>
+          <div className="legend-row"><span>Gói</span><StatusBadge tone={user.plan === "PREMIUM" ? "success" : "neutral"}>{user.plan}</StatusBadge></div>
           <div className="legend-row"><span>Ngày hết hạn Premium</span><strong>{vnDate(user.premiumExpiresAt)}</strong></div>
           <div className="legend-row"><span>Đăng ký</span><strong>{vnDate(user.createdAt)}</strong></div>
           <div className="legend-row"><span>Hoạt động ghi nhận gần nhất</span><strong>{vnDate(user.lastSeenAt)}</strong></div>
@@ -38,11 +40,11 @@ export default async function AdminUserDetail({ params }: { params: Promise<{ id
     <section className="card card-pad" style={{ marginTop: 20 }}><h3 className="section-title">Đề xuất cấp bù Premium</h3>
       {!protectedTarget && user.accessState.status === "ACTIVE" ? <AdminManualGrantForm userId={user.id} /> :
         <p className="section-subtitle">Không tạo đề xuất cho tài khoản quản trị được bảo vệ hoặc người dùng bị khóa.</p>}
-      <Link className="button button-outline" href="/admin/subscriptions">Xem hàng chờ phê duyệt</Link>
+      <Link className="v4-admin-record-link" href="/admin/subscriptions">Xem hàng chờ phê duyệt<ChevronRight size={16} aria-hidden="true" /></Link>
     </section>
     <section className="card card-pad" style={{ marginTop: 20 }}><h3 className="section-title">Lịch sử cấp quyền Premium</h3>
       <div className="table-wrap"><table><thead><tr><th>Nguồn</th><th>Bắt đầu</th><th>Hết hạn</th><th>Tình trạng</th><th>Thao tác</th></tr></thead><tbody>
-        {user.subscriptionGrants.map(g => <tr key={g.id}><td>{g.grantType}</td><td>{vnDate(g.startsAt)}</td><td>{vnDate(g.expiresAt)}</td><td>{g.revokedAt ? "Đã thu hồi" : g.startsAt > new Date() ? "Đã lên lịch" : g.expiresAt <= new Date() ? "Đã hết hạn" : "Đang hiệu lực"}</td>
+        {user.subscriptionGrants.map(g => <tr key={g.id}><td>{g.grantType}</td><td>{vnDate(g.startsAt)}</td><td>{vnDate(g.expiresAt)}</td><td><StatusBadge tone={g.revokedAt || g.expiresAt <= new Date() ? "neutral" : g.startsAt > new Date() ? "warning" : "success"}>{g.revokedAt ? "Đã thu hồi" : g.startsAt > new Date() ? "Đã lên lịch" : g.expiresAt <= new Date() ? "Đã hết hạn" : "Đang hiệu lực"}</StatusBadge></td>
           <td>{!protectedTarget && g.grantType === "MANUAL" && !g.revokedAt && g.expiresAt > new Date() ? <AdminManualRevoke grantId={g.id} /> : "—"}</td></tr>)}
       </tbody></table>{!user.subscriptionGrants.length && <p className="section-subtitle">Chưa có lịch sử cấp Premium.</p>}</div></section>
     <section className="card card-pad" style={{ marginTop: 20 }}><h3 className="section-title">Đơn hàng Premium gần đây</h3>

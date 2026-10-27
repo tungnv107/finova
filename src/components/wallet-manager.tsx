@@ -1,7 +1,8 @@
 "use client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, WalletCards, Landmark, Smartphone, PiggyBank, Archive, Pencil } from "lucide-react";
+import { Plus, WalletCards, Landmark, Smartphone, PiggyBank, Archive, Pencil, History } from "lucide-react";
+import { ActionMenu } from "@/components/ui/interaction-controls";
 import { formatVnd } from "@/lib/money";
 
 type Wallet = { id: string; name: string; type: string; currency: string; balance: string; archived: boolean; includeInAvailable: boolean };
@@ -147,8 +148,13 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
         <div className="field"><label htmlFor={`edit-wallet-${w.id}`}>Tên ví</label><input id={`edit-wallet-${w.id}`} value={editedName} onChange={e => setEditedName(e.target.value)} maxLength={80} required /></div>
         <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}><input type="checkbox" checked={editedAvailable} onChange={e => setEditedAvailable(e.target.checked)} /> Tính vào số dư khả dụng</label>
         <div className="form-footer" style={{ gap: 8 }}><button disabled={busy} type="button" className="button button-outline" onClick={() => setEditingId(null)}>Hủy</button><button disabled={busy} type="submit" className="button button-primary">{busy ? "Đang lưu…" : "Lưu thay đổi"}</button></div>
-      </form> : <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}><span className="subtitle" style={{ fontSize: 12 }}>{w.includeInAvailable ? "Có trong số dư khả dụng" : "Không tính vào số dư khả dụng"}</span><button disabled={busy} className="button button-outline" aria-label={`Chỉnh sửa ${w.name}`} onClick={() => { setEditingId(w.id); setEditedName(w.name); setEditedAvailable(w.includeInAvailable); setError(""); }}><Pencil size={14} /> Sửa</button></div>}
-      <div className="wallet-card-footer"><span className="subtitle" style={{ fontSize: 11 }}>Số dư sổ cái · {w.currency}</span><div className="wallet-card-actions"><button type="button" disabled={busy || w.archived} className="button button-outline" onClick={() => void startReconciliation(w)}>Đối soát</button><button disabled={busy} aria-label={w.archived ? `Khôi phục ${w.name}` : `Lưu trữ ${w.name}`} className="button button-outline" onClick={() => archive(w.id, w.archived)}><Archive size={14} />{w.archived ? "Khôi phục" : "Lưu trữ"}</button></div></div></article>; })}</div>}
+      </form> : <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 15 }}><span className="subtitle" style={{ fontSize: 12 }}>{w.includeInAvailable ? "Có trong số dư khả dụng" : "Không tính vào số dư khả dụng"}</span></div>}
+      <div className="wallet-card-footer"><span className="subtitle" style={{ fontSize: 11 }}>Số dư sổ cái · {w.currency}</span><div className="wallet-card-actions"><button type="button" disabled={busy || w.archived} className="button button-outline" onClick={() => void startReconciliation(w)}>Đối soát</button>
+<ActionMenu label={`Thao tác ví ${w.name}`} disabled={busy} items={[
+  { label: "Xem lịch sử", icon: History, onSelect: () => { setDetailWalletId(w.id); invalidateDetail(); document.getElementById("wallet-history")?.scrollIntoView({ behavior: "smooth" }); } },
+  { label: "Sửa ví", icon: Pencil, onSelect: () => { setEditingId(w.id); setEditedName(w.name); setEditedAvailable(w.includeInAvailable); setError(""); } },
+  { label: w.archived ? "Khôi phục ví" : "Lưu trữ ví", icon: Archive, danger: !w.archived, onSelect: () => void archive(w.id, w.archived) },
+]} /></div></div></article>; })}</div>}
     {reconcileMessage && <p role="status" className="subtitle" style={{ marginTop: 14 }}>{reconcileMessage}</p>}
     {reconcileId && (() => { const w = wallets.find(wallet => wallet.id === reconcileId); if (!w) return null;
       const validAmount = /^(0|[1-9]\d{0,15})$/.test(actualBalance);
@@ -159,7 +165,7 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
           {error && <div role="alert" className="form-error">{error}</div>}<div className="form-footer"><button type="submit" disabled={busy || !validAmount || reconcileReason.trim().length < 5} className="button button-primary">{busy ? "Đang lưu…" : "Xác nhận đối soát"}</button></div></form>
         <h3 style={{ marginTop: 24 }}>20 lần đối soát gần nhất</h3>{reconcileHistory.length ? <div className="table-wrap"><table><thead><tr><th>Thời gian</th><th>Số dư sổ</th><th>Thực tế</th><th>Chênh lệch</th><th>Lý do</th></tr></thead><tbody>{reconcileHistory.map(row => <tr key={row.id}><td>{new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh" }).format(new Date(row.createdAt))}</td><td>{formatVnd(row.expectedBalance)}</td><td>{formatVnd(row.actualBalance)}</td><td>{formatVnd(row.delta)}</td><td>{row.reason}</td></tr>)}</tbody></table></div> : <p className="subtitle">Chưa có lần đối soát nào được ghi nhận.</p>}
       </section>; })()}
-    {!onboarding && wallets.length > 0 && <section className="card card-pad" style={{ marginTop: 24 }} aria-label="Tra cứu số dư và lịch sử ví">
+    {!onboarding && wallets.length > 0 && <section id="wallet-history" className="card card-pad" style={{ marginTop: 24 }} aria-label="Tra cứu số dư và lịch sử ví">
       <div className="section-header"><div><h2 className="section-title">Lịch sử số dư ví</h2><p className="section-subtitle">Số dư được đối chiếu trực tiếp từ bút toán sổ cái, tính đến ngày bạn chọn.</p></div></div>
       <form className="form-grid" onSubmit={e => { e.preventDefault(); void loadDetail(); }} style={{ marginTop: 16 }}>
         <div className="field"><label htmlFor="wallet-history-wallet">Ví cần xem</label><select id="wallet-history-wallet" value={detailWalletId} onChange={e => { setDetailWalletId(e.target.value); invalidateDetail(); }}>

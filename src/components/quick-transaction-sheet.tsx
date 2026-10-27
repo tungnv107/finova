@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownLeft, ArrowUpRight, ArrowLeftRight, X } from "lucide-react";
+import { SegmentedControl } from "@/components/ui/interaction-controls";
 
 type Kind = "INCOME" | "EXPENSE" | "TRANSFER";
 type Wallet = { id: string; name: string; archived: boolean };
@@ -84,7 +85,8 @@ function QuickTransactionDialog({ onClose, initialKind }: { onClose: () => void;
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="quick-title" className="quick-sheet">
       <div className="sheet-handle" aria-hidden="true" />
       <div className="section-header"><div><span className="eyebrow">GHI CHÉP NHANH</span><h2 id="quick-title" className="section-title">Thêm giao dịch</h2></div><button ref={closeRef} type="button" onClick={onClose} className="icon-button" aria-label="Đóng biểu mẫu"><X size={20} /></button></div>
-      <div className="quick-kind-tabs">{actions.map(({ kind: k, title, icon: Icon }) => <button key={k} type="button" className={kind === k ? "selected" : ""} aria-pressed={kind === k} onClick={() => { setKind(k); setCategoryId(""); setError(""); }}><Icon size={20} aria-hidden="true" />{title}</button>)}</div>
+      <SegmentedControl className="v4-quick-kind" label="Loại giao dịch" value={kind} options={actions.map(action => ({ value: action.kind, label: action.title, icon: action.icon }))}
+        onChange={next => { setKind(next); setCategoryId(""); setError(""); }} />
       {loading ? <p className="subtitle" role="status">Đang tải ví và danh mục…</p> : loadError ? <div role="alert" className="quick-load-error"><p>Không tải được ví và danh mục. Vui lòng kiểm tra kết nối rồi thử lại.</p><button type="button" className="button button-outline" onClick={() => { setLoading(true); setLoadError(false); setLoadAttempt(value => value + 1); }}>Tải lại dữ liệu</button></div> : !wallets.length ? <p className="subtitle">Bạn cần tạo ví trước khi ghi giao dịch. <a className="text-link" href="/wallets">Quản lý ví →</a></p> : <form onSubmit={submit} className="quick-form">
         <div className="field"><label htmlFor="quick-amount">Số tiền (VND)</label><input id="quick-amount" required inputMode="numeric" pattern="[1-9][0-9]*" placeholder="Nhập số tiền" value={amount} onChange={e => setAmount(e.target.value)} /></div>
         <div className="field"><label htmlFor="quick-wallet">Ví nguồn</label><select id="quick-wallet" required value={walletId} onChange={e => { const next = e.target.value; setWalletId(next); if (destinationWalletId === next) setDestinationWalletId(wallets.find(w => w.id !== next)?.id ?? ""); }}>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>

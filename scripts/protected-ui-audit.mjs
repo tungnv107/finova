@@ -110,7 +110,7 @@ async function auditInteractions() {
   await navigate("/dashboard");
   await evaluate("document.querySelector('.mobile-fab').click()");
   await waitFor(() => evaluate("!!document.querySelector('.quick-sheet[role=dialog]')"), "quick transaction dialog");
-  const dialog = await evaluate(`({ modal: document.querySelector('.quick-sheet')?.getAttribute('aria-modal'), focus: document.activeElement?.getAttribute('aria-label'), locked: document.body.style.overflow, buttons: [...document.querySelectorAll('.quick-kind-tabs button')].map(b => b.textContent) })`);
+  const dialog = await evaluate(`({ modal: document.querySelector('.quick-sheet')?.getAttribute('aria-modal'), focus: document.activeElement?.getAttribute('aria-label'), locked: document.body.style.overflow, buttons: [...document.querySelectorAll('.v4-quick-kind [role=radio]')].map(b => b.textContent) })`);
   assert.equal(dialog.modal, "true");
   assert.equal(dialog.focus, "Đóng biểu mẫu");
   assert.equal(dialog.locked, "hidden");
