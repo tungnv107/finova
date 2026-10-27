@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../src/lib/db";
-import { createWallet, updateWallet, createTransaction, createTransactionInDb, editTransaction, refundTransaction, listTransactionsPage, walletBalances, validateBalanced, voidTransaction } from "../src/server/ledger";
+import { createWallet, updateWallet, deleteWallet, createTransaction, createTransactionInDb, editTransaction, refundTransaction, listTransactionsPage, walletBalances, validateBalanced, voidTransaction } from "../src/server/ledger";
 import { serializable } from "../src/server/serializable";
 import { seedCategories } from "../src/server/seed-categories";
 import { createCategory, listCategories, updateCategory } from "../src/server/categories";
@@ -143,6 +143,34 @@ async function main() {
     await updateWallet(a, walletB.id, { includeInAvailable: true });
     const categoryIncome = await prisma.category.findFirstOrThrow({ where: { workspaceId: a.workspaceId, name: "Lương" } });
     const categoryExpense = await prisma.category.findFirstOrThrow({ where: { workspaceId: a.workspaceId, name: "Ăn uống" } });
+
+    // Keep destructive-wallet test fixtures outside the main accounting assertions below.
+    const walletTest = await setup();
+    const walletTestExpense = await prisma.category.findFirstOrThrow({ where: { workspaceId: walletTest.workspaceId, name: "Ăn uống" } });
+    // An accidentally created wallet can be deleted, including its optional opening entry.
+    const emptyMistake = await createWallet(walletTest, { name: "Ví nhầm rỗng", type: "CASH", openingBalance: "0", openingDate: occurredAt });
+    await assert.rejects(deleteWallet(b, emptyMistake.id), /Không tìm thấy ví/);
+    await deleteWallet(walletTest, emptyMistake.id);
+    assert.equal(await prisma.wallet.count({ where: { id: emptyMistake.id } }), 0);
+    assert.equal(await prisma.ledgerAccount.count({ where: { id: emptyMistake.ledgerAccountId } }), 0);
+    const openingMistake = await createWallet(walletTest, { name: "Ví nhập dư đầu kỳ", type: "BANK", openingBalance: "123456", openingDate: occurredAt });
+    const openingJournal = await prisma.journal.findFirstOrThrow({ where: { workspaceId: walletTest.workspaceId, walletId: openingMistake.id, kind: "OPENING" } });
+    await deleteWallet(walletTest, openingMistake.id);
+    assert.equal(await prisma.wallet.count({ where: { id: openingMistake.id } }), 0);
+    assert.equal(await prisma.journal.count({ where: { id: openingJournal.id } }), 0);
+    assert.equal(await prisma.posting.count({ where: { journalId: openingJournal.id } }), 0);
+    assert.equal(await prisma.ledgerAccount.count({ where: { id: openingMistake.ledgerAccountId } }), 0);
+    assert.equal((await walletBalances(walletTest.workspaceId)).some(w => w.id === openingMistake.id), false);
+
+    const usedMistake = await createWallet(walletTest, { name: "Ví đã giao dịch", type: "CASH", openingBalance: "0", openingDate: occurredAt });
+    await createTransaction(walletTest, { kind: "EXPENSE", walletId: usedMistake.id, categoryId: walletTestExpense.id, amount: "100", occurredAt });
+    await assert.rejects(deleteWallet(walletTest, usedMistake.id), /Hãy lưu trữ ví/);
+    assert.equal(await prisma.wallet.count({ where: { id: usedMistake.id } }), 1);
+    const scheduledMistake = await createWallet(walletTest, { name: "Ví có lịch định kỳ", type: "CASH", openingBalance: "0", openingDate: occurredAt });
+    await prisma.recurringRule.create({ data: { workspaceId: walletTest.workspaceId, name: "Định kỳ tham chiếu", frequency: "MONTHLY", interval: 1,
+      kind: "EXPENSE", walletId: scheduledMistake.id, categoryId: walletTestExpense.id, amount: 100, startDate: "2026-10-01" } });
+    await assert.rejects(deleteWallet(walletTest, scheduledMistake.id), /Hãy lưu trữ ví/);
+    assert.equal(await prisma.wallet.count({ where: { id: scheduledMistake.id } }), 1);
 
     // CRUD danh mục: tạo account cùng workspace, sửa tên, lưu trữ/khôi phục và chặn truy cập chéo.
     const custom = await createCategory(a, { kind: "EXPENSE", name: "Danh mục kiểm thử", icon: "Circle", color: "#18C5C2" });

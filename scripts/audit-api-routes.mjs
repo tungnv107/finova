@@ -65,7 +65,7 @@ for (const file of files.sort()) {
 
 // App Router can evaluate page and layout components independently. Every
 // data-reading admin page must have its own role guard before querying data.
-const adminDir = path.join(process.cwd(), "src", "app", "(protected)", "admin");
+const adminDir = path.join(process.cwd(), "src", "app", "(admin-portal)", "admin");
 function checkAdminPages(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const fullPath = path.join(dir, entry.name);

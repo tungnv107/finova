@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, WalletCards, Landmark, Smartphone, PiggyBank, Archive, Pencil, History } from "lucide-react";
+import { Plus, WalletCards, Landmark, Smartphone, PiggyBank, Archive, Pencil, History, Trash2 } from "lucide-react";
 import { ActionMenu } from "@/components/ui/interaction-controls";
 import { formatVnd } from "@/lib/money";
 
@@ -17,6 +17,7 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
   const [adding, setAdding] = useState(onboarding);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [deleteMessage, setDeleteMessage] = useState("");
   const [name, setName] = useState("");
   const [type, setType] = useState("CASH");
   const [openingBalance, setOpeningBalance] = useState("0");
@@ -85,6 +86,22 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
     finally { setBusy(false); }
   }
 
+  async function removeWallet(wallet: Wallet) {
+    if (!window.confirm(`Xóa vĩnh viễn ví "${wallet.name}"? Số dư đầu kỳ (nếu có) sẽ được xóa khỏi sổ cái. Chỉ ví chưa phát sinh giao dịch hoặc liên kết khác mới có thể xóa. Không thể hoàn tác.`)) return;
+    setBusy(true); setError(""); setDeleteMessage("");
+    try {
+      const response = await fetch(`/api/v1/wallets/${encodeURIComponent(wallet.id)}`, { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "Không thể xóa ví.");
+      if (editingId === wallet.id) setEditingId(null);
+      if (reconcileId === wallet.id) setReconcileId(null);
+      if (detailWalletId === wallet.id) { setDetailWalletId(wallets.find(w => w.id !== wallet.id)?.id ?? ""); invalidateDetail(); }
+      setDeleteMessage(`Đã xóa ví "${wallet.name}".`);
+      router.refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : "Có lỗi kết nối."); }
+    finally { setBusy(false); }
+  }
+
   async function saveWallet(e: React.FormEvent, id: string) {
     e.preventDefault(); setError(""); setBusy(true);
     try {
@@ -143,6 +160,7 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
     </section>}
     {adding && <form className="card card-pad" onSubmit={submit} style={{ marginBottom: 22 }}><div className="section-header"><h2 className="section-title">Thêm ví hoặc tài khoản</h2>{!onboarding && <button className="button button-outline" type="button" onClick={() => setAdding(false)}>Đóng</button>}</div><div className="form-grid" style={{ marginTop: 18 }}><div className="field"><label htmlFor="wallet-name">Tên ví</label><input id="wallet-name" required maxLength={80} placeholder="Ví dụ: Tiền mặt" value={name} onChange={e => setName(e.target.value)} /></div><div className="field"><label htmlFor="wallet-type">Loại ví</label><select id="wallet-type" value={type} onChange={e => setType(e.target.value)}>{types.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div><div className="field"><label htmlFor="wallet-balance">Số dư đầu kỳ (₫)</label><input id="wallet-balance" required inputMode="numeric" pattern="[0-9]+" value={openingBalance} onChange={e => setOpeningBalance(e.target.value)} /></div><div className="field"><label htmlFor="wallet-date">Ngày bắt đầu</label><input id="wallet-date" type="date" value={openingDate} onChange={e => setOpeningDate(e.target.value)} required /></div></div><p className="subtitle" style={{ fontSize: 12, marginTop: 13 }}>Số dư đầu kỳ được ghi vào vốn đầu kỳ, không tính là thu nhập.</p>{error && <div role="alert" className="form-error">{error}</div>}<div className="form-footer"><button disabled={busy} type="submit" className="button button-primary">{busy ? "Đang lưu…" : "Lưu ví"}</button></div></form>}
     {!adding && error && <div role="alert" className="form-error">{error}</div>}
+    {deleteMessage && <p role="status" className="subtitle">{deleteMessage}</p>}
     {!wallets.length ? (onboarding ? null : <div className="empty"><WalletCards /><strong>Bạn chưa có ví nào</strong><p>Hãy tạo ví đầu tiên để bắt đầu ghi chép tài chính.</p><button className="button button-primary" onClick={() => setAdding(true)}>Tạo ví đầu tiên</button></div>) : <div className="wallet-grid">{wallets.map(w => { const Icon = icons[w.type as keyof typeof icons] || WalletCards; return <article key={w.id} className={`card wallet-card ${w.archived ? "wallet-card-archived" : ""}`}><div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}><div className="kpi-icon"><Icon /></div><span className="pill">{types.find(t => t.value === w.type)?.label}{w.archived ? " · Đã lưu trữ" : ""}</span></div><h3 style={{ marginTop: 20 }}>{w.name}</h3><div className="wallet-balance">{formatVnd(w.balance)}</div>
       {editingId === w.id ? <form onSubmit={e => saveWallet(e, w.id)} style={{ marginBottom: 16 }}>
         <div className="field"><label htmlFor={`edit-wallet-${w.id}`}>Tên ví</label><input id={`edit-wallet-${w.id}`} value={editedName} onChange={e => setEditedName(e.target.value)} maxLength={80} required /></div>
@@ -154,6 +172,7 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
   { label: "Xem lịch sử", icon: History, onSelect: () => { setDetailWalletId(w.id); invalidateDetail(); document.getElementById("wallet-history")?.scrollIntoView({ behavior: "smooth" }); } },
   { label: "Sửa ví", icon: Pencil, onSelect: () => { setEditingId(w.id); setEditedName(w.name); setEditedAvailable(w.includeInAvailable); setError(""); } },
   { label: w.archived ? "Khôi phục ví" : "Lưu trữ ví", icon: Archive, danger: !w.archived, onSelect: () => void archive(w.id, w.archived) },
+  { label: "Xóa ví nhập nhầm", icon: Trash2, danger: true, onSelect: () => void removeWallet(w) },
 ]} /></div></div></article>; })}</div>}
     {reconcileMessage && <p role="status" className="subtitle" style={{ marginTop: 14 }}>{reconcileMessage}</p>}
     {reconcileId && (() => { const w = wallets.find(wallet => wallet.id === reconcileId); if (!w) return null;

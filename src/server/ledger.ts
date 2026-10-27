@@ -80,6 +80,72 @@ export async function updateWallet(context: UserContext, walletId: string, raw: 
   });
 }
 
+/** Remove a mistaken wallet only before it has any financial activity beyond its opening entry. */
+export async function deleteWallet(context: UserContext, walletId: string) {
+  try {
+    return await serializable(async (db) => {
+      const wallet = await db.wallet.findFirst({ where: { id: walletId, workspaceId: context.workspaceId } });
+      if (!wallet) throw new HttpError(404, "NOT_FOUND", "Không tìm thấy ví.");
+
+      // Some draft/import/recurring references are intentionally not database foreign keys.
+      const [transactions, reconciliations, goals, debts, debtPayments, cardEntries, bankAccounts, recurring, imports] = await Promise.all([
+        db.transaction.count({ where: { workspaceId: context.workspaceId, OR: [{ walletId }, { destinationWalletId: walletId }] } }),
+        db.walletReconciliation.count({ where: { workspaceId: context.workspaceId, walletId } }),
+        db.savingsGoal.count({ where: { workspaceId: context.workspaceId, walletId } }),
+        db.debtContract.count({ where: { workspaceId: context.workspaceId, walletId } }),
+        db.debtPayment.count({ where: { workspaceId: context.workspaceId, walletId } }),
+        db.cardEntry.count({ where: { workspaceId: context.workspaceId, walletId } }),
+        db.bankAccount.count({ where: { workspaceId: context.workspaceId, walletId } }),
+        db.recurringRule.count({ where: { workspaceId: context.workspaceId, OR: [{ walletId }, { destinationWalletId: walletId }] } }),
+        db.importRow.count({ where: { workspaceId: context.workspaceId, OR: [{ walletId }, { destinationWalletId: walletId }] } }),
+      ]);
+      if ([transactions, reconciliations, goals, debts, debtPayments, cardEntries, bankAccounts, recurring, imports].some(Boolean)) {
+        throw new HttpError(409, "WALLET_IN_USE", "Ví đã có giao dịch, đối soát, mục tiêu hoặc liên kết khác. Hãy lưu trữ ví để giữ lại lịch sử; gỡ liên kết nếu cần xóa ví nhập nhầm.");
+      }
+
+      // Check all journal references, including postings from journals attributed to another wallet.
+      const journals = await db.journal.findMany({
+        where: { workspaceId: context.workspaceId, OR: [
+          { walletId }, { destinationWalletId: walletId }, { postings: { some: { ledgerAccountId: wallet.ledgerAccountId } } },
+        ] },
+        take: 2,
+        select: {
+          id: true, kind: true, walletId: true, destinationWalletId: true, transactionId: true,
+          reversedJournalId: true, reversal: { select: { id: true } },
+          postings: { select: { ledgerAccountId: true, side: true, amount: true, account: { select: { code: true } } } },
+        },
+      });
+      if (journals.length > 1 || (journals.length === 1 && !(
+        journals[0].kind === "OPENING" && journals[0].walletId === walletId &&
+        journals[0].destinationWalletId === null && journals[0].transactionId === null &&
+        journals[0].reversedJournalId === null && journals[0].reversal === null &&
+        journals[0].postings.length === 2 &&
+        journals[0].postings.some(p => p.ledgerAccountId === wallet.ledgerAccountId && p.side === "DEBIT" && p.amount.gt(0)) &&
+        journals[0].postings.some(p => p.account.code === "EQUITY_OPENING" && p.side === "CREDIT" && p.amount.gt(0)) &&
+        journals[0].postings[0].amount.eq(journals[0].postings[1].amount)
+      ))) {
+        throw new HttpError(409, "WALLET_HAS_ACTIVITY", "Ví đã có bút toán phát sinh. Hãy lưu trữ ví để giữ lại lịch sử.");
+      }
+
+      // One atomic change: reverse the initial setup by removing only its journal and asset account.
+      if (journals.length === 1) {
+        await db.posting.deleteMany({ where: { journalId: journals[0].id } });
+        await db.journal.delete({ where: { id: journals[0].id } });
+      }
+      await db.wallet.delete({ where: { id: walletId, workspaceId: context.workspaceId } });
+      await db.ledgerAccount.delete({ where: { id: wallet.ledgerAccountId, workspaceId: context.workspaceId } });
+      await db.auditLog.create({ data: { workspaceId: context.workspaceId, actorId: context.userId,
+        action: "DELETE", entityType: "WALLET", entityId: walletId } });
+      return { id: walletId };
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      throw new HttpError(409, "WALLET_IN_USE", "Ví vẫn còn dữ liệu liên quan. Hãy gỡ liên kết hoặc lưu trữ ví.");
+    }
+    throw error;
+  }
+}
+
 type EntrySpec = { kind: "INCOME" | "EXPENSE" | "TRANSFER" | "REFUND"; amount: Decimal; walletAccountId: string; categoryAccountId?: string; destinationAccountId?: string; feeAmount?: Decimal; feeAccountId?: string };
 export function transactionLines(spec: EntrySpec): Line[] {
   const { amount, walletAccountId, categoryAccountId, destinationAccountId } = spec;
