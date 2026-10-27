@@ -3,6 +3,7 @@ import "./globals.css";
 import "../styles/finova-v3.css";
 import "../styles/finova-refined.css";
 import "../styles/finova-v4-controls.css";
+import "../styles/finova-responsive-forms.css";
 import { PwaRegister } from "@/components/pwa-register";
 
 export const metadata: Metadata = {

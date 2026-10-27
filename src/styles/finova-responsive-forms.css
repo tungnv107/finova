@@ -1,0 +1,84 @@
+/* Shared form sizing for Safari/iPadOS, iOS and smaller desktop content areas.
+ * Native date controls have wider intrinsic content than ordinary text inputs.
+ * Give them enough flex basis to wrap before they overlap the next filter. */
+.field,
+.form-grid > * {
+  min-inline-size: 0;
+}
+
+.field :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.filterbar {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.filterbar .field {
+  flex: 1 1 230px;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+/* :has() is supported by modern Safari (including iPadOS) and Chromium.
+ * Longer localized date values need more room than a short select label. */
+.filterbar .field:has(input:is([type="date"], [type="datetime-local"], [type="month"])) {
+  flex-basis: 260px;
+}
+
+.field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"]) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-align: start;
+}
+
+.field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"])::-webkit-date-and-time-value {
+  min-inline-size: 0;
+  text-align: start;
+}
+
+/* iPadOS may zoom inputs below 16px, including those in nested account forms. */
+@media (max-width: 1199px) {
+  .field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"]) {
+    font-size: 16px;
+  }
+}
+
+/* The admin account form intentionally stacks before the phone breakpoint. */
+@media (min-width: 768px) and (max-width: 850px) {
+  .form-grid.admin-account-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filterbar .field,
+  .filterbar .field:has(input:is([type="date"], [type="datetime-local"], [type="month"])) {
+    flex: 1 1 100%;
+  }
+
+  /* Safari automatically zooms the page when a focused control is <16px. */
+  .field :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    font-size: 16px;
+  }
+
+  .filterbar:is(.dashboard-filter-form.expanded-mobile, .v4-transaction-filter-sheet.is-open) {
+    inline-size: min(100%, 560px);
+    max-block-size: 90dvh;
+    scroll-padding-block-end: calc(24px + env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling: touch;
+  }
+}
