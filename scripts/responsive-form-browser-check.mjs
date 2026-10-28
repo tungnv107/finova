@@ -93,7 +93,8 @@ try {
         '<form id="qa-dashboard-sheet" class="card filterbar dashboard-filter-form expanded-mobile">' + field('qa-sheet-start','date') + field('qa-sheet-end','date') + wallet.replaceAll('qa-wallet','qa-sheet-wallet') + '<button class="button">Xem báo cáo</button></form>' +
         '<form id="qa-transaction-sheet" class="card filterbar v4-filter-form v4-transaction-filter-sheet is-open">' + field('qa-filter-start','date') + field('qa-filter-end','date') + wallet.replaceAll('qa-wallet','qa-filter-wallet') + '<button class="button">Áp dụng</button></form>' +
         '<section id="qa-wallet-history" class="card card-pad"><form class="form-grid">' + wallet.replaceAll('qa-wallet','qa-history-wallet') + field('qa-history-date','date','2026-10-28') + '<div><button type="button" class="button button-soft">Xem số dư và lịch sử</button></div></form></section>' +
-        '<form id="qa-report-tabs" class="card card-pad"><div class="form-grid">' + field('qa-tab-start','date') + field('qa-tab-end','date') + wallet.replaceAll('qa-wallet','qa-tab-wallet') + '</div></form>';
+        '<form id="qa-report-tabs" class="card card-pad"><div class="form-grid">' + field('qa-tab-start','date') + field('qa-tab-end','date') + wallet.replaceAll('qa-wallet','qa-tab-wallet') + '</div></form>' +
+        '<section id="qa-hero" class="dashboard-hero"><div class="v4-dashboard-secondary-links"><button class="v4-hero-text-action" type="button">↙ Ghi thu</button><button class="v4-hero-text-action" type="button">↗ Ghi chi</button><button class="v4-hero-text-action" type="button">↔ Chuyển ví</button><a class="v4-hero-text-action" href="#qa-hero">Tất cả tính năng →</a></div></section>';
       document.body.append(host);
       const names = ['qa-report','qa-editor','qa-dashboard-sheet','qa-transaction-sheet','qa-wallet-history','qa-report-tabs'];
       const invalid = [];
@@ -127,13 +128,31 @@ try {
           if (styles.boxShadow !== 'none') invalid.push(id + ': ' + theme + ' focus shadow visible');
           ctrl.blur();
         }
+        const hero = document.getElementById('qa-hero');
+        const heroBounds = hero.getBoundingClientRect();
+        const actions = [...hero.querySelectorAll('.v4-hero-text-action')];
+        if (actions.length !== 4) invalid.push('hero: missing actions');
+        actions.forEach((action, index) => {
+          const rect = action.getBoundingClientRect();
+          const css = getComputedStyle(action);
+          const expectedText = index < 2 ? 'rgb(18, 59, 128)' : 'rgb(255, 255, 255)';
+          if (css.color !== expectedText) invalid.push('hero action ' + index + ': ' + theme + ' unreadable text ' + css.color);
+          if (css.backgroundColor === 'rgba(0, 0, 0, 0)') invalid.push('hero action ' + index + ': no button fill');
+          if (rect.height < 44 || rect.left < heroBounds.left - 1 || rect.right > heroBounds.right + 1) invalid.push('hero action ' + index + ': undersized or outside hero');
+          for (let next = index + 1; next < actions.length; next++) {
+            const sibling = actions[next].getBoundingClientRect();
+            if (rect.left < sibling.right - 1 && rect.right > sibling.left + 1 && rect.top < sibling.bottom - 1 && rect.bottom > sibling.top + 1) invalid.push('hero actions overlap');
+          }
+        });
+        const actionRow = hero.querySelector('.v4-dashboard-secondary-links');
+        if (actionRow.scrollWidth > actionRow.clientWidth + 1) invalid.push('hero actions overflow ' + actionRow.scrollWidth + '/' + actionRow.clientWidth);
       }
       return { invalid, viewport: innerWidth, forms: names.length, sheetScrollable: getComputedStyle(document.getElementById('qa-dashboard-sheet')).overflowY === 'auto' };
     })()`);
     assert.equal(metrics.viewport, width, "Viewport emulation");
     assert.deepEqual(metrics.invalid, [], `${width}px layout: ${metrics.invalid.join('; ')}`);
     if (width < 768) assert.equal(metrics.sheetScrollable, true, "Mobile filter sheet should scroll");
-    console.log(`PASS: form layout ${width}px, 6 representative forms, no control overlap or focus effects`);
+    console.log(`PASS: ${width}px, 6 forms and 4 hero actions, no overflow or focus effects`);
   }
 } finally {
   for (const waiter of pending.values()) { clearTimeout(waiter.timer); waiter.reject(new Error("Browser closed")); }
