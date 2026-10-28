@@ -4,6 +4,7 @@
 .field,
 .form-grid > * {
   min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .field :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
@@ -35,6 +36,9 @@
 }
 
 .field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"]) {
+  display: block;
+  box-sizing: border-box;
+  inline-size: 100%;
   min-inline-size: 0;
   max-inline-size: 100%;
   overflow: hidden;
@@ -43,20 +47,45 @@
 
 .field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"])::-webkit-date-and-time-value {
   min-inline-size: 0;
+  max-inline-size: 100%;
+  inline-size: 100%;
   text-align: start;
 }
 
-/* Remove the blue/teal focus glow from all form controls, including iOS selects
- * and native date inputs. Preserve a neutral keyboard focus indicator. */
-:is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
-  border-color: var(--finova-border-control);
+/* iOS Safari's native editing wrapper can insist on its localized intrinsic width.
+ * Constrain the internal date text as well as the outer input so it cannot expand
+ * a bottom-sheet column or a wallet-history card past its available width. */
+.field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"])::-webkit-datetime-edit {
+  box-sizing: border-box;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow: hidden;
+  padding: 0;
+}
+
+.field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"])::-webkit-datetime-edit-fields-wrapper {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+/* No recoloring, ring or glow on focused form controls, whether touch or keyboard.
+ * Keep separate focus indicators on links and action buttons. */
+:is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):is(:focus, :focus-visible) {
   outline: none;
   box-shadow: none;
 }
 
-:is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus-visible {
-  outline: 2px solid var(--finova-text-muted);
-  outline-offset: 2px;
+.field :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):is(:focus, :focus-visible) {
+  border-color: var(--finova-border-control);
+}
+
+@supports (-webkit-touch-callout: none) {
+  /* Reset Safari's intrinsic date-control box without losing the native picker. */
+  .field input:is([type="date"], [type="datetime-local"], [type="time"], [type="month"]) {
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-min-logical-width: 0;
+  }
 }
 
 /* iPadOS may zoom inputs below 16px, including those in nested account forms. */

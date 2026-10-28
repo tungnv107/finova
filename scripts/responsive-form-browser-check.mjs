@@ -41,7 +41,7 @@ async function until(check, label) {
 }
 async function evaluate(expression) {
   const answer = await command("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
-  if (answer.exceptionDetails) throw new Error(`Page evaluation failed: ${answer.exceptionDetails.text}`);
+  if (answer.exceptionDetails) throw new Error(`Page evaluation failed: ${answer.exceptionDetails.exception?.description || answer.exceptionDetails.text}`);
   return answer.result.value;
 }
 
@@ -91,9 +91,11 @@ try {
         '<form id="qa-report" class="card filterbar">' + field('qa-report-start','date') + field('qa-report-end','date') + wallet + wallet.replaceAll('qa-wallet','qa-category') + '<button class="button">Xem báo cáo</button></form>' +
         '<form id="qa-editor" class="card card-pad"><div class="form-grid">' + field('qa-occurred','datetime-local','2026-10-27T14:15') + field('qa-budget','date') + wallet.replaceAll('qa-wallet','qa-account') + field('qa-month','month','2026-10') + field('qa-search','text','Chi tiêu') + '</div></form>' +
         '<form id="qa-dashboard-sheet" class="card filterbar dashboard-filter-form expanded-mobile">' + field('qa-sheet-start','date') + field('qa-sheet-end','date') + wallet.replaceAll('qa-wallet','qa-sheet-wallet') + '<button class="button">Xem báo cáo</button></form>' +
-        '<form id="qa-transaction-sheet" class="card filterbar v4-filter-form v4-transaction-filter-sheet is-open">' + field('qa-filter-start','date') + field('qa-filter-end','date') + wallet.replaceAll('qa-wallet','qa-filter-wallet') + '<button class="button">Áp dụng</button></form>';
+        '<form id="qa-transaction-sheet" class="card filterbar v4-filter-form v4-transaction-filter-sheet is-open">' + field('qa-filter-start','date') + field('qa-filter-end','date') + wallet.replaceAll('qa-wallet','qa-filter-wallet') + '<button class="button">Áp dụng</button></form>' +
+        '<section id="qa-wallet-history" class="card card-pad"><form class="form-grid">' + wallet.replaceAll('qa-wallet','qa-history-wallet') + field('qa-history-date','date','2026-10-28') + '<div><button type="button" class="button button-soft">Xem số dư và lịch sử</button></div></form></section>' +
+        '<form id="qa-report-tabs" class="card card-pad"><div class="form-grid">' + field('qa-tab-start','date') + field('qa-tab-end','date') + wallet.replaceAll('qa-wallet','qa-tab-wallet') + '</div></form>';
       document.body.append(host);
-      const names = ['qa-report','qa-editor','qa-dashboard-sheet','qa-transaction-sheet'];
+      const names = ['qa-report','qa-editor','qa-dashboard-sheet','qa-transaction-sheet','qa-wallet-history','qa-report-tabs'];
       const invalid = [];
       for (const name of names) {
         const form = document.getElementById(name);
@@ -112,32 +114,26 @@ try {
           if (${width} <= 1199 && ctrl.matches('input[type=date],input[type=datetime-local],input[type=month]') && parseFloat(getComputedStyle(ctrl).fontSize) < 16) invalid.push(ctrl.id + ': iOS font smaller than 16px');
         }
       }
-      // Safari/Chromium should keep input and select focus neutral in both themes.
+      // Inputs must show no focus border recoloring, outline or glow in either theme.
       for (const theme of ['light', 'dark']) {
         document.documentElement.dataset.theme = theme;
-        const probe = document.createElement('span');
-        probe.style.color = 'var(--finova-text-muted)';
-        host.append(probe);
-        const neutralColor = getComputedStyle(probe).color;
-        for (const id of ['qa-report-start', 'qa-occurred', 'qa-wallet', 'qa-search']) {
+        for (const id of ['qa-report-start', 'qa-occurred', 'qa-wallet', 'qa-search', 'qa-history-date', 'qa-filter-start', 'qa-sheet-start', 'qa-month']) {
           const ctrl = document.getElementById(id);
           const originalBorder = getComputedStyle(ctrl).borderColor;
           ctrl.focus({ preventScroll: true });
-          const focusedBorder = getComputedStyle(ctrl).borderColor;
-          const focusedOutline = getComputedStyle(ctrl).outlineStyle;
-          const outlineColor = getComputedStyle(ctrl).outlineColor;
-          if (focusedBorder !== originalBorder) invalid.push(id + ': ' + theme + ' focus border changed color');
-          if (focusedOutline !== 'none' && outlineColor !== neutralColor) invalid.push(id + ': ' + theme + ' focus outline is not neutral');
+          const styles = getComputedStyle(ctrl);
+          if (styles.borderColor !== originalBorder) invalid.push(id + ': ' + theme + ' focus border changed color');
+          if (styles.outlineStyle !== 'none') invalid.push(id + ': ' + theme + ' focus outline visible');
+          if (styles.boxShadow !== 'none') invalid.push(id + ': ' + theme + ' focus shadow visible');
           ctrl.blur();
         }
-        probe.remove();
       }
       return { invalid, viewport: innerWidth, forms: names.length, sheetScrollable: getComputedStyle(document.getElementById('qa-dashboard-sheet')).overflowY === 'auto' };
     })()`);
     assert.equal(metrics.viewport, width, "Viewport emulation");
     assert.deepEqual(metrics.invalid, [], `${width}px layout: ${metrics.invalid.join('; ')}`);
     if (width < 768) assert.equal(metrics.sheetScrollable, true, "Mobile filter sheet should scroll");
-    console.log(`PASS: form layout ${width}px, 4 representative forms, no control overlap`);
+    console.log(`PASS: form layout ${width}px, 6 representative forms, no control overlap or focus effects`);
   }
 } finally {
   for (const waiter of pending.values()) { clearTimeout(waiter.timer); waiter.reject(new Error("Browser closed")); }
