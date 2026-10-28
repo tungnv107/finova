@@ -100,7 +100,7 @@ export async function deleteWallet(context: UserContext, walletId: string) {
         db.importRow.count({ where: { workspaceId: context.workspaceId, OR: [{ walletId }, { destinationWalletId: walletId }] } }),
       ]);
       if ([transactions, reconciliations, goals, debts, debtPayments, cardEntries, bankAccounts, recurring, imports].some(Boolean)) {
-        throw new HttpError(409, "WALLET_IN_USE", "Ví đã có giao dịch, đối soát, mục tiêu hoặc liên kết khác. Hãy lưu trữ ví để giữ lại lịch sử; gỡ liên kết nếu cần xóa ví nhập nhầm.");
+        throw new HttpError(409, "WALLET_IN_USE", "Ví đã có giao dịch, đối soát, mục tiêu hoặc liên kết khác. Hãy lưu trữ ví để giữ lại lịch sử; gỡ liên kết nếu cần xóa ví.");
       }
 
       // Check all journal references, including postings from journals attributed to another wallet.

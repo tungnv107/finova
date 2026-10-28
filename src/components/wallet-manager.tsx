@@ -172,7 +172,7 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
   { label: "Xem lịch sử", icon: History, onSelect: () => { setDetailWalletId(w.id); invalidateDetail(); document.getElementById("wallet-history")?.scrollIntoView({ behavior: "smooth" }); } },
   { label: "Sửa ví", icon: Pencil, onSelect: () => { setEditingId(w.id); setEditedName(w.name); setEditedAvailable(w.includeInAvailable); setError(""); } },
   { label: w.archived ? "Khôi phục ví" : "Lưu trữ ví", icon: Archive, danger: !w.archived, onSelect: () => void archive(w.id, w.archived) },
-  { label: "Xóa ví nhập nhầm", icon: Trash2, danger: true, onSelect: () => void removeWallet(w) },
+  { label: "Xóa ví", icon: Trash2, danger: true, onSelect: () => void removeWallet(w) },
 ]} /></div></div></article>; })}</div>}
     {reconcileMessage && <p role="status" className="subtitle" style={{ marginTop: 14 }}>{reconcileMessage}</p>}
     {reconcileId && (() => { const w = wallets.find(wallet => wallet.id === reconcileId); if (!w) return null;

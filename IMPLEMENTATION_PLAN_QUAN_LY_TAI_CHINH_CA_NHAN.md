@@ -1,6 +1,6 @@
 # IMPLEMENTATION PLAN — PHẦN MỀM QUẢN LÝ TÀI CHÍNH CÁ NHÂN
 
-> **Checkpoint 27/10/2026 — xóa ví nhập nhầm:**
+> **Checkpoint 27/10/2026 — xóa ví:**
 > - [x] **WALLET-DEL-01 (DEV):** Thêm thao tác xóa ví, `DELETE /api/v1/wallets/[id]` có xác thực/Origin/workspace scope, xác nhận trước khi xóa, audit, giao dịch nguyên tử chỉ gỡ ví chưa phát sinh hoạt động ngoài bút toán đầu kỳ; chặn ví có giao dịch, đối soát, mục tiêu, liên kết ngân hàng, lịch định kỳ, dòng nhập hoặc bút toán khác. **539/539 unit (98 files), typecheck, ESLint, API guard audit 81 routes/102 handlers PASS.**
 > - [x] **WALLET-DEL-02a (integration trên PostgreSQL):** `FINOVA_TEST_RUN=1 npm run test:integration` PASS trên Docker PostgreSQL `127.0.0.1:55433`; workspace fixture độc lập kiểm tra xóa ví trống, ví chỉ có số dư đầu kỳ, chặn ví đã chi tiêu và liên kết lịch định kỳ. Kiểm thử toàn bộ P2–P6, đồng bộ import và 72 bút toán cân đối PASS.
 > - [ ] **WALLET-DEL-02b (UAT có đăng nhập):** Cần kiểm thử thao tác xóa ví trên trình duyệt bằng tài khoản thật; Safari iOS/iPadOS và datetime picker thực tế chưa nghiệm thu trên thiết bị.
