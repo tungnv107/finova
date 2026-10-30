@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { aiConfigured, aiJson, aiUsesChatCompletions } from "@/server/ai/provider";
+import { statementSchema } from "@/server/ai/statements";
 
 const fetchMock = vi.fn();
 const schema = z.object({ answer: z.string() });
@@ -64,13 +65,63 @@ describe("custom provider selection and transport", () => {
     const [url, options] = fetchMock.mock.calls[0], body = JSON.parse(options.body);
     expect(url).toBe("https://9router.haui.com.vn/v1/responses"); expect(body.input[0].content).toEqual(content); expect(body.text.format.type).toBe(format); expect(body.messages).toBeUndefined();
   });
-  it.each(["length", "content_filter", "tool_calls", undefined])("rejects unfinished or unsafe completion %s even if JSON is parseable", async finish_reason => {
+  it.each([["length", "AI_OUTPUT_TRUNCATED"], ["content_filter", "AI_OUTPUT_REFUSED"], ["tool_calls", "AI_INVALID_RESPONSE"], [undefined, "AI_INVALID_RESPONSE"]])("rejects unfinished or unsafe completion %s even if JSON is parseable", async (finish_reason, code) => {
     fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason, message: { content: '{"answer":"ok"}' } }] }));
-    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code });
   });
-  it.each([{ refusal: "Refused" }, { tool_calls: [{ name: "unsafe" }] }, { function_call: { name: "unsafe" } }, { content: '{"answer":123}' }, { content: "```json\n{\"answer\":\"ok\"}\n```" }, { content: null }])("rejects invalid/refused/tool output %j", async message => {
+  it.each([{ tool_calls: [{ name: "unsafe" }] }, { function_call: { name: "unsafe" } }, { content: null }])("rejects invalid/tool output %j", async message => {
     fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content: '{"answer":"ok"}', ...message } }] }));
     await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });
+  });
+  it.each(['```json\n{"answer":"ok"}\n```', '  ```JSON\r\n{"answer":"ok"}\r\n```  ', '```\n{"answer":"ok"}\n```'])("accepts a complete JSON fence from a compatible provider: %s", async content => {
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content } }] }));
+    await expect(aiJson("test", "", [], schema)).resolves.toEqual({ answer: "ok" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it("accepts the fenced bank-statement shape observed from 9router without changing financial fields", async () => {
+    const statement = { currency: "VND", complete: true, warnings: [], rows: [
+      { date: "2026-10-29", amount: "50000", kind: "EXPENSE", note: "Ăn trưa", reference: "TEST-001", categoryId: "food", confidence: 0.99, categoryConfidence: 0.97, reason: "Giao dịch chi rõ ràng." },
+      { date: "2026-10-29", amount: "500000", kind: "INCOME", note: "Lương", reference: "TEST-002", categoryId: "salary", confidence: 0.99, categoryConfidence: 0.97, reason: "Giao dịch thu rõ ràng." },
+    ] };
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "```json\n" + JSON.stringify(statement, null, 2) + "\n```" } }] }));
+    await expect(aiJson("bank_statement", "Read transactions", [], statementSchema)).resolves.toEqual(statement);
+  });
+  it("accepts a complete JSON fence in custom Responses json_object mode", async () => {
+    vi.stubEnv("LLM__ApiMode", "responses");
+    fetchMock.mockResolvedValue(Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: '```json\n{"answer":"ok"}\n```' }] }] }));
+    await expect(aiJson("test", "", [], schema)).resolves.toEqual({ answer: "ok" });
+  });
+  it.each([
+    'Here is the result: ```json\n{"answer":"ok"}\n```',
+    '```json\n{"answer":"ok"}\n```\nMore text',
+    '```json\n{"answer":"ok"}\n```\n```json\n{"answer":"second"}\n```',
+    '```json\n{"answer":"ok"}',
+    '```json\n{"answer":\n```',
+    '```javascript\n{"answer":"ok"}\n```',
+    'PRIVATE_PROVIDER_CONTENT',
+  ])("rejects incomplete, mixed or non-JSON output without leaking it: %s", async content => {
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content } }] }));
+    const error = await aiJson("test", "", [], schema).catch(e => e);
+    expect(error).toMatchObject({ code: "AI_OUTPUT_NOT_JSON" });
+    expect(error.message).not.toContain(content);
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain(content);
+  });
+  it.each(['{"answer":123}', '```json\n{"answer":123}\n```', '```json\n{}\n```'])("still enforces the schema after removing formatting: %s", async content => {
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content } }] }));
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_OUTPUT_SCHEMA_MISMATCH" });
+  });
+  it("keeps strict json_schema output strict", async () => {
+    vi.stubEnv("LLM__ResponseFormat", "json_schema");
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content: '```json\n{"answer":"ok"}\n```' } }] }));
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_OUTPUT_NOT_JSON" });
+  });
+  it("does not parse a fenced result when the provider reports truncation or refusal", async () => {
+    const content = '```json\n{"answer":"ok"}\n```';
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "length", message: { content } }] }));
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_OUTPUT_TRUNCATED" });
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content, refusal: "PRIVATE_REFUSAL" } }] }));
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_OUTPUT_REFUSED" });
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain("PRIVATE_REFUSAL");
   });
   it.each([null, {}, { choices: [] }, { choices: [{ finish_reason: "stop" }] }])("rejects malformed response %j", async result => {
     fetchMock.mockResolvedValue(Response.json(result)); await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });

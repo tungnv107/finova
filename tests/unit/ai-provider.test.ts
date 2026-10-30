@@ -19,13 +19,17 @@ describe("P0 provider boundary", () => {
   it.each(["incomplete", "failed"])("rejects %s before any rows can be staged", async status => {
     fetchMock.mockResolvedValue(Response.json({ status, output: [] })); await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_INVALID_RESPONSE" });
   });
-  it.each(["not json", '{"answer":123}'])("rejects invalid model output %s", async text => {
+  it.each([["not json", "AI_OUTPUT_NOT_JSON"], ['{"answer":123}', "AI_OUTPUT_SCHEMA_MISMATCH"]])("rejects invalid model output %s", async (text, code) => {
     fetchMock.mockResolvedValue(Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text }] }] }));
-    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ status: 502 });
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ status: 502, code });
+  });
+  it("reports output-token truncation separately from malformed output", async () => {
+    fetchMock.mockResolvedValue(Response.json({ status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [{ type: "message", content: [{ type: "output_text", text: '{"answer":"ok"}' }] }] }));
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_OUTPUT_TRUNCATED" });
   });
   it("handles refusals", async () => {
     fetchMock.mockResolvedValue(Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "refusal" }] }] }));
-    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ status: 502 });
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ status: 502, code: "AI_OUTPUT_REFUSED" });
   });
   it("reports missing configuration without a request", async () => {
     vi.stubEnv("OPENAI_API_KEY", ""); await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_NOT_CONFIGURED" }); expect(fetchMock).not.toHaveBeenCalled();
