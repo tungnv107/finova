@@ -21,7 +21,7 @@ const context = { userId: id, workspaceId: `personal-${id}`, name: "AI P0 QA", i
 const today = localDay(new Date());
 const nativeFetch = globalThis.fetch;
 const customProvider = process.argv.includes("--custom-provider");
-const envKeys = ["OPENAI_API_KEY", "LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId", "LLM__ApiMode", "LLM__ResponseFormat"];
+const envKeys = ["OPENAI_API_KEY", "LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId", "LLM__VisionModelId", "LLM__ApiMode", "LLM__ResponseFormat"];
 const savedEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
 for (const key of envKeys) delete process.env[key];
 process.env.OPENAI_API_KEY = "fixture-key-never-sent";

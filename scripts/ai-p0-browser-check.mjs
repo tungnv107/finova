@@ -50,9 +50,9 @@ try {
   assert.equal(cookieResult.success, true);
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
   await navigate("/imports", "Thêm sao kê, để AI lo phần nhập liệu");
-  await until(() => evaluate("document.readyState === 'complete' && !!document.querySelector('#ai-statement-file') && Object.keys(document.querySelector('#ai-statement-file')).some(k=>k.startsWith('__reactProps'))"), "hydrated statement form");
+  await until(() => evaluate("document.readyState === 'complete' && !!document.querySelector('#ai-statement-text') && Object.keys(document.querySelector('#ai-statement-text')).some(k=>k.startsWith('__reactProps'))"), "hydrated statement form");
   assert.equal(await evaluate("!!document.querySelector('#ai-reopen')"), false, "removed AI batch picker");
-  assert.equal(await evaluate("document.querySelector('#ai-statement-file').disabled || document.querySelector('#ai-statement-file').closest('fieldset').disabled"), true, "unconfigured provider UI");
+  assert.equal(await evaluate("document.querySelector('#ai-statement-text').matches(':disabled')"), true, "unconfigured provider UI");
   // An unconfigured provider cannot start a new AI preview. Review the isolated
   // fixture via API, then continue through the CSV/XLSX import history UI.
   const reviewStatus = await evaluate(`(async () => {

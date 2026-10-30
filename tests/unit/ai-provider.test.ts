@@ -4,7 +4,7 @@ import { aiJson } from "@/server/ai/provider";
 import { failure } from "@/server/http";
 const fetchMock = vi.fn();
 beforeEach(() => {
-  for (const key of ["LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId", "LLM__ApiMode", "LLM__ResponseFormat"]) vi.stubEnv(key, "");
+  for (const key of ["LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId", "LLM__VisionModelId", "LLM__ApiMode", "LLM__ResponseFormat"]) vi.stubEnv(key, "");
   vi.stubGlobal("fetch", fetchMock); vi.stubEnv("OPENAI_API_KEY", "test-key"); fetchMock.mockReset(); vi.spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });

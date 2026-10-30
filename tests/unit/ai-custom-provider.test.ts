@@ -10,6 +10,7 @@ beforeEach(() => {
   vi.stubEnv("LLM__Endpoint", " https://9router.haui.com.vn/v1/// ");
   vi.stubEnv("LLM__ApiKey", " custom-test-key ");
   vi.stubEnv("LLM__ChatModelId", " tungnv ");
+  vi.stubEnv("LLM__VisionModelId", "");
   vi.stubEnv("LLM__ApiMode", ""); vi.stubEnv("LLM__ResponseFormat", "");
   vi.stubEnv("OPENAI_API_KEY", "OPENAI_DO_NOT_SEND"); vi.stubEnv("FINOVA_AI_MODEL", "OPENAI_MODEL_DO_NOT_SEND");
   fetchMock.mockReset().mockImplementation(async () => success());
@@ -35,6 +36,40 @@ describe("custom provider selection and transport", () => {
   it("does not require an OpenAI key when custom config is complete", async () => {
     vi.stubEnv("OPENAI_API_KEY", ""); expect(aiConfigured()).toBe(true);
     await expect(aiJson("test", "", [], schema)).resolves.toEqual({ answer: "ok" });
+  });
+  it.each(["chat-completions", "responses"])("uses the vision override only for images in %s mode", async apiMode => {
+    vi.stubEnv("LLM__ApiMode", apiMode); vi.stubEnv("LLM__VisionModelId", " ag/gemini-3.8-flash ");
+    fetchMock.mockImplementation(async () => apiMode === "responses"
+      ? Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: '{"answer":"ok"}' }] }] })
+      : success());
+    const image = { type: "input_image" as const, image_url: "data:image/png;base64,aW1hZ2U=", detail: "high" as const };
+    await aiJson("statement", "Read transactions", [image], schema);
+    const [url, options] = fetchMock.mock.calls[0], body = JSON.parse(options.body);
+    expect(url).toBe(`https://9router.haui.com.vn/v1/${apiMode === "responses" ? "responses" : "chat/completions"}`);
+    expect(options.headers.Authorization).toBe("Bearer custom-test-key");
+    expect(body.model).toBe("ag/gemini-3.8-flash");
+    if (apiMode === "responses") expect(body.input[0].content).toEqual([image]);
+    else expect(body.messages[1].content).toEqual([{ type: "image_url", image_url: { url: image.image_url, detail: "high" } }]);
+    await aiJson("statement", "Read transactions", [{ type: "input_text", text: "synthetic statement" }], schema);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe("tungnv");
+    await aiJson("statement", "Read transactions", [{ type: "input_file", filename: "statement.pdf", file_data: "data:application/pdf;base64,cGRm" }], schema);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body).model).toBe("tungnv");
+  });
+  it("does not fall back to OpenAI when only a custom vision model is configured", async () => {
+    for (const key of ["LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId"]) vi.stubEnv(key, "");
+    vi.stubEnv("LLM__VisionModelId", "vision-model");
+    expect(aiConfigured()).toBe(false);
+    await expect(aiJson("test", "", [], schema)).rejects.toMatchObject({ code: "AI_CONFIG_INVALID" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("reports unusable image output without logging image data or retrying another provider", async () => {
+    fetchMock.mockResolvedValue(Response.json({ choices: [{ finish_reason: "stop", message: { content: "PRIVATE_PROVIDER_REPLY" } }] }));
+    const error = await aiJson("statement", "", [{ type: "input_image", image_url: "data:image/png;base64,PRIVATE_IMAGE", detail: "high" }], schema).catch(e => e);
+    expect(error).toMatchObject({ code: "AI_OUTPUT_NOT_JSON" });
+    expect(error.message).toContain("LLM__VisionModelId");
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain("PRIVATE_");
+    expect(vi.mocked(console.warn).mock.calls[0][1]).toMatchObject({ inputType: "image" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   it.each(["LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId"])("fails closed when %s is missing even if OpenAI is configured", async key => {
     vi.stubEnv(key, " "); expect(aiConfigured()).toBe(false);

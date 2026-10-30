@@ -18,7 +18,7 @@ describe("resumable statement review", () => {
     expect(html).toContain('aria-label="Xóa dòng 1"');
     expect(html).toContain("50.000 ₫");
     expect(html).toContain("Chưa chọn danh mục");
-    expect(html).toMatch(/disabled=""[^>]*>.*?Nhập 0 giao dịch vào ví/s);
+    expect(html).toMatch(/disabled=""[^>]*>[\s\S]*?Nhập 0 giao dịch vào ví/);
   });
   it("does not gate row corrections on AI confidence being present", () => {
     const html = renderToStaticMarkup(<ImportReview {...props} batch={{ ...batch, rows: [{ ...row, confidence: null }] }} />);

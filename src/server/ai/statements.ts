@@ -85,7 +85,9 @@ export async function previewAiStatement(context: UserContext, file: File | stri
   const { categories, history } = await classificationContext(context.workspaceId);
   const extracted = await aiJson("bank_statement", `Read every transaction from this bank statement, at most ${MAX_AI_ROWS}. Return complete=false if unreadable, cropped, missing pages, over the limit or only a summary is available. Never invent rows. Preserve identical real transactions separately. Exclude opening/closing balances, totals and headers. Amount is positive integer VND without separators; debit is EXPENSE and credit INCOME. TRANSFER only when clearly an internal transfer between the user's own accounts. Preserve bank transaction reference, or null. Date is YYYY-MM-DD; ambiguous fields must be null and low confidence. Never infer currency from language alone. Match only allowed category IDs of the same kind, otherwise null. Confidence refers to extraction, categoryConfidence to category. Explain uncertainty in Vietnamese.`,
     [{ type: "input_text", text: JSON.stringify({ today: localDay(new Date()), categories, examples: history.slice(0, 60).map(h => ({ ...h, note: redactDescription(h.note ?? "") })) }) }, content], statementSchema);
-  if (!extracted.complete || !extracted.rows.length) throw new HttpError(422, "STATEMENT_INCOMPLETE", "Chưa đọc được đầy đủ sao kê. Hãy gửi nội dung đầy đủ, rõ ràng và tối đa 200 giao dịch mỗi lần.");
+  if (!extracted.complete || !extracted.rows.length) throw new HttpError(422, "STATEMENT_INCOMPLETE", content.type === "input_image"
+    ? "AI chưa đọc được đầy đủ ảnh sao kê. Hãy dùng ảnh rõ nét, đủ nội dung hoặc Dán văn bản. Nếu ảnh rõ vẫn không đọc được, quản trị viên cần kiểm tra model đọc ảnh (LLM__VisionModelId)."
+    : "Chưa đọc được đầy đủ sao kê. Hãy gửi nội dung đầy đủ, rõ ràng và tối đa 200 giao dịch mỗi lần.");
   if (extracted.currency !== "VND") throw new HttpError(422, "STATEMENT_CURRENCY", "Chỉ nhập sao kê được xác định rõ bằng VND. Hãy kiểm tra đơn vị tiền trong sao kê.");
   const occurrences = new Map<string, number>();
   const seen = new Set<string>();

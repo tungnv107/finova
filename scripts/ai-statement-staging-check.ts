@@ -15,11 +15,12 @@ async function main() {
   const userId = `ai_staging_${randomUUID()}`, workspaceId = `personal-${userId}`;
   const context = { userId, workspaceId, name: "Statement staging QA", image: null };
   const nativeFetch = globalThis.fetch;
-  const envKeys = ["LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId", "LLM__ApiMode", "LLM__ResponseFormat", "FINOVA_ADMIN_ENABLED", "FINOVA_USER_ACCESS_ENFORCED"];
+  const envKeys = ["LLM__Endpoint", "LLM__ApiKey", "LLM__ChatModelId", "LLM__VisionModelId", "LLM__ApiMode", "LLM__ResponseFormat", "FINOVA_ADMIN_ENABLED", "FINOVA_USER_ACCESS_ENFORCED"];
   const savedEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
   process.env.LLM__Endpoint = "https://synthetic-ai.invalid/v1";
   process.env.LLM__ApiKey = "fixture-key-never-sent";
   process.env.LLM__ChatModelId = "fixture-model";
+  process.env.LLM__VisionModelId = "";
   process.env.LLM__ApiMode = "chat-completions";
   process.env.LLM__ResponseFormat = "json_object";
   process.env.FINOVA_ADMIN_ENABLED = "0";

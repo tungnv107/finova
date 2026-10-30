@@ -39,6 +39,7 @@ services:
       LLM__Endpoint: ${LLM__Endpoint:-}
       LLM__ApiKey: ${LLM__ApiKey:-}
       LLM__ChatModelId: ${LLM__ChatModelId:-}
+      LLM__VisionModelId: ${LLM__VisionModelId:-}
       LLM__ApiMode: ${LLM__ApiMode:-}
       LLM__ResponseFormat: ${LLM__ResponseFormat:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}

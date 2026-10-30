@@ -25,7 +25,7 @@ export async function boundedProviderJson(response: Response, limit: number): Pr
 export function providerHttpError(response: Pick<Response, "status" | "headers">, payload: unknown, provider: "openai" | "custom" = "openai"): HttpError {
   const label = provider === "openai" ? "OpenAI" : "Nhà cung cấp AI";
   const keySetting = provider === "openai" ? "OPENAI_API_KEY" : "LLM__ApiKey";
-  const modelSetting = provider === "openai" ? "FINOVA_AI_MODEL" : "LLM__ChatModelId, LLM__Endpoint và LLM__ApiMode";
+  const modelSetting = provider === "openai" ? "FINOVA_AI_MODEL" : "LLM__ChatModelId/LLM__VisionModelId, LLM__Endpoint và LLM__ApiMode";
   const billing = provider === "openai" ? "OpenAI Platform → Billing" : "trang Billing/hạn mức của nhà cung cấp đang cấu hình";
   const raw = payload && typeof payload === "object" && "error" in payload ? payload.error : null;
   const fields = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};

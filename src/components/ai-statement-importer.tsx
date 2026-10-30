@@ -13,7 +13,7 @@ export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = fal
   const fileInput = useRef<HTMLInputElement>(null);
   const [walletId, setWallet] = useState(wallets[0]?.id || "");
   const [file, setFile] = useState<File | null>(null), [consent, setConsent] = useState(false);
-  const [inputMode, setInputMode] = useState<"file" | "text">("file"), [text, setText] = useState("");
+  const [inputMode, setInputMode] = useState<"file" | "text">("text"), [text, setText] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [dragging, setDragging] = useState(false);
   const locked = busy || disabled || !available;
   const textTooLong = text.length > MAX_AI_STATEMENT_TEXT_LENGTH;
@@ -52,7 +52,7 @@ export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = fal
       <fieldset disabled={locked} className={styles.uploadFieldset}>
         <div className={styles.uploadGrid}>
           <div className={styles.sourcePanel}>
-            <SegmentedControl label="Cách nhập sao kê" options={[{ value: "file", label: "Tải tệp", icon: FileUp }, { value: "text", label: "Dán văn bản", icon: FileText }]} value={inputMode} disabled={locked} onChange={mode => { setInputMode(mode); setError(""); }} />
+            <SegmentedControl label="Cách nhập sao kê" options={[{ value: "text", label: "Dán văn bản", icon: FileText }, { value: "file", label: "Tải tệp", icon: FileUp }]} value={inputMode} disabled={locked} onChange={mode => { setInputMode(mode); setError(""); }} />
             {inputMode === "file" ? <div>
               <div className={`${styles.dropZone} ${dragging ? styles.dragging : ""}`}
                 onDragOver={e => { e.preventDefault(); if (!locked) setDragging(true); }} onDragLeave={() => setDragging(false)}
