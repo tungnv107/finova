@@ -29,6 +29,26 @@ describe("P0 HTTP boundaries", () => {
     const form = new FormData(); form.append("file", new File(["%PDF-1.4"], "a.pdf")); form.append("walletId", "wallet");
     expect((await importPost(new NextRequest("http://localhost/api/v1/imports/ai", { method: "POST", body: form }))).status).toBe(400); expect(mocks.preview).not.toHaveBeenCalled();
   });
+  it.each(["file", "text"])("accepts a %s statement with wallet and consent", async source => {
+    const form = new FormData();
+    const text = "02/01/2026 | Chi 50.000 VND | Ăn trưa";
+    if (source === "text") form.append("text", text);
+    else form.append("file", new File(["%PDF-1.4"], "a.pdf"));
+    form.append("walletId", "wallet"); form.append("consent", "true");
+    mocks.preview.mockResolvedValue({ id: "batch" });
+    const response = await importPost(new NextRequest("http://localhost/api/v1/imports/ai", { method: "POST", body: form }));
+    expect(response.status).toBe(201);
+    expect(mocks.preview).toHaveBeenCalledWith({ userId: "u", workspaceId: "ws" }, source === "text" ? text : expect.any(File), "wallet");
+  });
+  it.each(["blank", "missing", "both", "no-consent", "no-wallet", "text-file"])("rejects invalid pasted input: %s", async scenario => {
+    const form = new FormData();
+    if (scenario !== "missing") form.append("text", scenario === "blank" ? " \r\n\t " : scenario === "text-file" ? new File(["text"], "text.txt") : "Chi 50.000 VND");
+    if (scenario === "both") form.append("file", new File(["%PDF-1.4"], "a.pdf"));
+    if (scenario !== "no-consent") form.append("consent", "true");
+    if (scenario !== "no-wallet") form.append("walletId", "wallet");
+    expect((await importPost(new NextRequest("http://localhost/api/v1/imports/ai", { method: "POST", body: form }))).status).toBe(400);
+    expect(mocks.preview).not.toHaveBeenCalled();
+  });
   it("does not let clients supply another workspace", async () => {
     const r = await classifyPost(new NextRequest("http://localhost/api/v1/ai/classify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note: "Coffee", kind: "EXPENSE", workspaceId: "foreign" }) }));
     expect(r.status).toBe(400); expect(mocks.classify).not.toHaveBeenCalled();

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileUp, Sparkles } from "lucide-react";
 import { Decimal, formatVnd } from "@/lib/money";
+import { MAX_AI_STATEMENT_TEXT_LENGTH } from "@/lib/ai-statement-limits";
 import type { getImport } from "@/server/imports";
 import styles from "./financial-ai.module.css";
 
@@ -50,16 +51,22 @@ function ReviewRow({ row, batchId, categories, wallets, disabled, onSaved }: { r
   </article>;
 }
 
-export function AiStatementImporter({ wallets, categories, batches, available, pdfOnlyDocuments = false }: { wallets: Wallet[]; categories: Category[]; batches: { id: string; fileName: string }[]; available: boolean; pdfOnlyDocuments?: boolean }) {
+export function AiStatementImporter({ wallets, categories, available, pdfOnlyDocuments = false }: { wallets: Wallet[]; categories: Category[]; available: boolean; pdfOnlyDocuments?: boolean }) {
   const router = useRouter();
   const [walletId, setWallet] = useState(wallets[0]?.id || ""), [file, setFile] = useState<File | null>(null), [consent, setConsent] = useState(false);
+  const [inputMode, setInputMode] = useState<"file" | "text">("file"), [text, setText] = useState("");
   const [batch, setBatch] = useState<Batch | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState(""), [progress, setProgress] = useState("");
+  const textTooLong = text.length > MAX_AI_STATEMENT_TEXT_LENGTH;
+  const validSource = inputMode === "text" ? Boolean(text.trim()) && !textTooLong : Boolean(file && file.size > 0 && file.size <= 5 * 1024 * 1024);
   async function load(id: string) { setBatch(await responseData(await fetch(`/api/v1/imports/${id}`))); }
   async function upload(event: React.FormEvent) {
-    event.preventDefault(); if (!file) return;
+    event.preventDefault(); if (busy || !available || !walletId || !consent || !validSource) return;
     setBusy(true); setError(""); setProgress("AI đang đọc và phân loại giao dịch…"); setBatch(null);
     try {
-      const form = new FormData(); form.append("file", file); form.append("walletId", walletId); form.append("consent", String(consent));
+      const form = new FormData();
+      if (inputMode === "text") form.append("text", text);
+      else if (file) form.append("file", file);
+      form.append("walletId", walletId); form.append("consent", String(consent));
       setBatch(await responseData(await fetch("/api/v1/imports/ai", { method: "POST", body: form })));
       setProgress("Đã phân tích. Kiểm tra các dòng trước khi xác nhận nhập vào ví."); router.refresh();
     } catch (e) { setError(e instanceof Error ? e.message : "Không đọc được sao kê."); setProgress(""); } finally { setBusy(false); }
@@ -75,24 +82,33 @@ export function AiStatementImporter({ wallets, categories, batches, available, p
         setProgress(`Đã nhập ${count} giao dịch trong lần này. Còn ${remaining} dòng hợp lệ.`);
       }
       router.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : "Lỗi kết nối. Mở lại đợt nhập để tiếp tục."); } finally { setBusy(false); }
+    } catch (e) { setError(e instanceof Error ? e.message : "Lỗi kết nối. Bấm xác nhận nhập để thử lại."); } finally { setBusy(false); }
   }
   return <section className={`card card-pad ${styles.section}`}>
     <div className={styles.rowHeading}><div><span className={styles.eyebrow}><Sparkles size={16} /> TRỢ LÝ SAO KÊ</span><h2 className="section-title">Đưa sao kê, AI điền giao dịch</h2></div><FileUp size={28} /></div>
-    <p className="section-subtitle">Ảnh PNG/JPG/WebP, PDF, Word DOC/DOCX, Excel XLS/XLSX hoặc CSV. Tối đa 5 MB và 200 giao dịch/lần. Word cần có văn bản; bản scan nên xuất PDF. XLSX/CSV dùng trang tính hiển thị đầu tiên, giá trị tĩnh.</p>
-    {pdfOnlyDocuments && <p className="section-subtitle">Với nhà cung cấp hiện tại, hãy chuyển Word sang PDF và XLS sang XLSX/CSV trước khi tải lên. Khả năng đọc ảnh và PDF phụ thuộc model được cấu hình.</p>}
+    <p className="section-subtitle">{inputMode === "text" ? "Dán văn bản sao kê để AI đọc và phân loại giao dịch. Tối đa 120.000 ký tự và 200 giao dịch/lần." : "Tải tệp sao kê hoặc chuyển sang Dán văn bản. Hỗ trợ ảnh PNG/JPG/WebP, PDF, Word DOC/DOCX, Excel XLS/XLSX hoặc CSV. Tối đa 5 MB và 200 giao dịch/lần. Word cần có văn bản; bản scan nên xuất PDF. XLSX/CSV dùng trang tính hiển thị đầu tiên, giá trị tĩnh."}</p>
+    {inputMode === "file" && pdfOnlyDocuments && <p className="section-subtitle">Với nhà cung cấp hiện tại, hãy chuyển Word sang PDF và XLS sang XLSX/CSV trước khi tải lên. Khả năng đọc ảnh và PDF phụ thuộc model được cấu hình.</p>}
     {!available && <p role="status" className={styles.warning}>AI chưa được cấu hình trên máy chủ. Bạn vẫn có thể nhập CSV/XLSX bằng ánh xạ cột bên dưới.</p>}
     {!wallets.length && <p>Tạo ví trước tại <a className="text-link" href="/wallets">Ví & tài khoản</a>.</p>}
     <form onSubmit={upload}><fieldset disabled={busy || !available}>
+      <div className={styles.inputModes} role="group" aria-label="Cách nhập sao kê">
+        <button type="button" className={`button ${inputMode === "file" ? "button-primary" : "button-outline"}`} aria-pressed={inputMode === "file"} onClick={() => { setInputMode("file"); setError(""); }}>Tải tệp</button>
+        <button type="button" className={`button ${inputMode === "text" ? "button-primary" : "button-outline"}`} aria-pressed={inputMode === "text"} onClick={() => { setInputMode("text"); setError(""); }}>Dán văn bản</button>
+      </div>
+      <div className={`field ${styles.statementText}`} hidden={inputMode !== "text"}>
+        <label htmlFor="ai-statement-text">Nội dung sao kê (Text)</label>
+        <textarea id="ai-statement-text" rows={8} required={inputMode === "text"} disabled={inputMode !== "text"} value={text} onChange={e => setText(e.target.value)} aria-describedby="ai-statement-text-help" aria-invalid={textTooLong} placeholder={"Dán nội dung sao kê vào đây, gồm ngày, số tiền, thu/chi và nội dung giao dịch.\nVí dụ: 29/10/2026 | Chi 50.000 VND | Ăn trưa"} />
+        <small id="ai-statement-text-help" className={textTooLong ? styles.warning : ""}>{text.length.toLocaleString("vi-VN")} / 120.000 ký tự. Giữ đầy đủ ngày, số tiền và đơn vị tiền tệ.</small>
+        {textTooLong && <p role="alert" className="form-error">Văn bản vượt 120.000 ký tự. Hãy chia nhỏ sao kê và thử lại.</p>}
+      </div>
       <div className="form-grid">
-        <div className="field"><label htmlFor="ai-statement-file">Tệp sao kê</label><input id="ai-statement-file" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv" required onChange={e => { const value = e.target.files?.[0] ?? null; setFile(value); setError(value && value.size > 5 * 1024 * 1024 ? "Tệp vượt 5 MB." : ""); }} /></div>
+        <div className="field" hidden={inputMode !== "file"}><label htmlFor="ai-statement-file">Tệp sao kê</label><input id="ai-statement-file" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv" required={inputMode === "file"} disabled={inputMode !== "file"} onChange={e => { const value = e.target.files?.[0] ?? null; setFile(value); setError(value && value.size > 5 * 1024 * 1024 ? "Tệp vượt 5 MB." : value && !value.size ? "Tệp phải có dữ liệu." : ""); }} /></div>
         <div className="field"><label htmlFor="ai-statement-wallet">Nhập vào ví</label><select id="ai-statement-wallet" value={walletId} required onChange={e => setWallet(e.target.value)}>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
       </div>
-      <label className={styles.consent}><input type="checkbox" checked={consent} required onChange={e => setConsent(e.target.checked)} /> Tôi đồng ý gửi sao kê, danh mục và một phần nội dung lịch sử đã che chuỗi số dài/email tới nhà cung cấp AI do quản trị viên cấu hình để phân tích. Tệp gốc có thể chứa thông tin tài khoản.</label>
-      <button type="submit" className="button button-primary" disabled={!walletId || !file || !consent || file.size > 5 * 1024 * 1024}>{busy ? "Đang phân tích…" : "Phân tích sao kê bằng AI"}</button>
+      <label className={styles.consent}><input type="checkbox" checked={consent} required onChange={e => setConsent(e.target.checked)} /> Tôi đồng ý gửi tệp hoặc văn bản sao kê, danh mục và một phần nội dung lịch sử đã che chuỗi số dài/email tới nhà cung cấp AI do quản trị viên cấu hình để phân tích. Nội dung sao kê gốc có thể chứa thông tin tài khoản.</label>
+      <button type="submit" className="button button-primary" disabled={!walletId || !validSource || !consent}>{busy ? "Đang phân tích…" : "Phân tích sao kê bằng AI"}</button>
     </fieldset></form>
     {error && <p role="alert" className="form-error">{error}</p>}{progress && <p role="status">{progress}</p>}
-    {batches.length > 0 && <div className="field"><label htmlFor="ai-reopen">Mở đợt nhập để kiểm tra hoặc tiếp tục</label><select id="ai-reopen" disabled={busy} value={batch?.id ?? ""} onChange={async e => { if (!e.target.value) return; setBusy(true); setError(""); try { await load(e.target.value); } catch (e) { setError(e instanceof Error ? e.message : "Không mở được."); } finally { setBusy(false); } }}><option value="">Chọn đợt nhập</option>{batches.map(b => <option key={b.id} value={b.id}>{b.fileName}</option>)}</select></div>}
     {batch && <div className={styles.results}>
       <h3>{batch.fileName}</h3><p>{batch.total} dòng · {batch.counts.VALID || 0} sẵn sàng · {batch.counts.INVALID || 0} cần kiểm tra · {batch.counts.DUPLICATE || 0} trùng · {batch.counts.IMPORTED || 0} đã nhập · {batch.counts.FAILED || 0} thất bại</p>
       <p>Tổng tiền đọc được trong {batch.rows.length} dòng hiển thị: Thu {formatVnd(batch.rows.filter(r => r.kind === "INCOME").reduce((s, r) => s.plus(r.amount || "0"), new Decimal(0)).toFixed(0))} · Chi {formatVnd(batch.rows.filter(r => r.kind === "EXPENSE").reduce((s, r) => s.plus(r.amount || "0"), new Decimal(0)).toFixed(0))}. Chuyển giữa ví được tách riêng.</p>

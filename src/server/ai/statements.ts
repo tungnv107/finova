@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { localDay, vndDayStart } from "@/lib/dates";
 import { MAX_IMPORT_FILE_BYTES, parseImportFile } from "@/lib/import-files";
 import { classifyFromHistory, redactDescription } from "@/lib/ai-classification";
+import { MAX_AI_STATEMENT_TEXT_LENGTH } from "@/lib/ai-statement-limits";
 import { HttpError, type UserContext } from "@/server/context";
 import { getImport } from "@/server/imports";
 import { serializable } from "@/server/serializable";
@@ -23,7 +24,14 @@ export const statementSchema = z.object({
   })).max(MAX_AI_ROWS),
 });
 
-export async function statementContent(file: File): Promise<{ content: AiContent; fileHash: string }> {
+export async function statementContent(file: File | string): Promise<{ content: AiContent; fileHash: string }> {
+  if (typeof file === "string") {
+    const normalized = file.replace(/\r\n?/g, "\n");
+    if (normalized.length > MAX_AI_STATEMENT_TEXT_LENGTH) throw new HttpError(413, "STATEMENT_TOO_LARGE", "Văn bản vượt 120.000 ký tự. Hãy chia nhỏ sao kê và thử lại.");
+    const text = normalized.trim();
+    if (!text) throw new HttpError(400, "EMPTY_STATEMENT", "Dán nội dung sao kê cần phân tích.");
+    return { fileHash: hash(`statement-text:${text}`), content: { type: "input_text", text: JSON.stringify({ statementText: text }) } };
+  }
   if (!file.size || file.size > MAX_IMPORT_FILE_BYTES) throw new HttpError(413, "FILE_SIZE", "Tệp phải có dữ liệu và không vượt 5 MB.");
   const bytes = Buffer.from(await file.arrayBuffer());
   const ext = file.name.toLowerCase().split(".").pop() ?? "";
@@ -59,14 +67,14 @@ export function statementIdentity(walletId: string, row: { reference?: string | 
   return hash(JSON.stringify(row.reference ? ["bank-reference", walletId, row.reference.trim()] : ["bank-movement", walletId, row.kind, row.date, row.amount, row.note.trim().toLowerCase(), occurrence]));
 }
 
-export async function previewAiStatement(context: UserContext, file: File, walletId: string) {
+export async function previewAiStatement(context: UserContext, file: File | string, walletId: string) {
   if (!await prisma.wallet.count({ where: { id: walletId, workspaceId: context.workspaceId, archivedAt: null } })) throw new HttpError(422, "INVALID_WALLET", "Ví không hợp lệ.");
   const { content, fileHash } = await statementContent(file);
   const { categories, history } = await classificationContext(context.workspaceId);
   const extracted = await aiJson("bank_statement", `Read every transaction from this bank statement, at most ${MAX_AI_ROWS}. Return complete=false if unreadable, cropped, missing pages, over the limit or only a summary is available. Never invent rows. Preserve identical real transactions separately. Exclude opening/closing balances, totals and headers. Amount is positive integer VND without separators; debit is EXPENSE and credit INCOME. TRANSFER only when clearly an internal transfer between the user's own accounts. Preserve bank transaction reference, or null. Date is YYYY-MM-DD; ambiguous fields must be null and low confidence. Never infer currency from language alone. Match only allowed category IDs of the same kind, otherwise null. Confidence refers to extraction, categoryConfidence to category. Explain uncertainty in Vietnamese.`,
     [{ type: "input_text", text: JSON.stringify({ today: localDay(new Date()), categories, examples: history.slice(0, 60).map(h => ({ ...h, note: redactDescription(h.note ?? "") })) }) }, content], statementSchema);
-  if (!extracted.complete || !extracted.rows.length) throw new HttpError(422, "STATEMENT_INCOMPLETE", "Chưa đọc được đầy đủ sao kê. Hãy gửi bản rõ nét, đủ trang hoặc chia thành tệp tối đa 200 giao dịch.");
-  if (extracted.currency !== "VND") throw new HttpError(422, "STATEMENT_CURRENCY", "Chỉ nhập sao kê được xác định rõ bằng VND. Hãy kiểm tra đơn vị tiền trên tệp.");
+  if (!extracted.complete || !extracted.rows.length) throw new HttpError(422, "STATEMENT_INCOMPLETE", "Chưa đọc được đầy đủ sao kê. Hãy gửi nội dung đầy đủ, rõ ràng và tối đa 200 giao dịch mỗi lần.");
+  if (extracted.currency !== "VND") throw new HttpError(422, "STATEMENT_CURRENCY", "Chỉ nhập sao kê được xác định rõ bằng VND. Hãy kiểm tra đơn vị tiền trong sao kê.");
   const occurrences = new Map<string, number>();
   const seen = new Set<string>();
   const prepared: Prisma.ImportRowCreateManyInput[] = extracted.rows.map((row, index) => {
@@ -98,7 +106,7 @@ export async function previewAiStatement(context: UserContext, file: File, walle
     const previous = await tx.importBatch.findFirst({ where: { workspaceId: context.workspaceId, fileHash,
       rows: { some: { walletId, confidence: { not: null } } } }, orderBy: { createdAt: "asc" } });
     if (previous) return previous;
-    const batch = await tx.importBatch.create({ data: { workspaceId: context.workspaceId, createdById: context.userId, fileName: file.name.slice(0, 200), fileHash } });
+    const batch = await tx.importBatch.create({ data: { workspaceId: context.workspaceId, createdById: context.userId, fileName: typeof file === "string" ? "Sao kê từ văn bản" : file.name.slice(0, 200), fileHash } });
     await tx.importRow.createMany({ data: prepared.map(row => ({ ...row, batchId: batch.id })) });
     return batch;
   });

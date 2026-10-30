@@ -1,5 +1,9 @@
 .section { margin-bottom: 24px; }
 .section fieldset { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
+.section [hidden] { display: none; }
+.inputModes { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.statementText { margin-bottom: 18px; }
+.statementText textarea { min-height: 180px; resize: vertical; }
 .eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--finova-primary); font-size: 12px; font-weight: 700; letter-spacing: .08em; margin-bottom: 8px; }
 .rowHeading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .consent { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; font-size: 13px; line-height: 1.65; }

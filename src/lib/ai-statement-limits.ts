@@ -1,0 +1,1 @@
+export const MAX_AI_STATEMENT_TEXT_LENGTH = 120_000;

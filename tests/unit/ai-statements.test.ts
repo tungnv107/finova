@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ExcelJS from "exceljs";
+import { MAX_AI_STATEMENT_TEXT_LENGTH } from "@/lib/ai-statement-limits";
 import { previewAiStatement, statementContent, statementIdentity } from "@/server/ai/statements";
 const mocks = vi.hoisted(() => ({ walletCount: vi.fn(), categories: vi.fn(), history: vi.fn(), prior: vi.fn(), transaction: vi.fn(), ai: vi.fn(), getImport: vi.fn(), premium: vi.fn() }));
 vi.mock("@/lib/db", () => ({ prisma: { wallet: { count: mocks.walletCount }, category: { findMany: mocks.categories }, transaction: { findMany: mocks.history }, importRow: { findMany: mocks.prior }, $transaction: mocks.transaction } }));
@@ -14,6 +15,19 @@ beforeEach(() => {
   mocks.ai.mockResolvedValue({ currency: "VND", complete: true, warnings: [], rows: [row] }); mocks.getImport.mockResolvedValue({ id: "batch" });
 });
 describe("P0 statement formats", () => {
+  it("sends pasted Vietnamese text as complete text, preserving rows and columns", async () => {
+    const text = "Ngày\tChi (VND)\tNội dung\n02/01/2026\t50.000\tĂn trưa\n02/01/2026\t50.000\tĂn trưa";
+    const result = await statementContent(text);
+    expect(result.content).toEqual({ type: "input_text", text: JSON.stringify({ statementText: text }) });
+    expect((await statementContent(`\n${text.replaceAll("\n", "\r\n")}\n`)).fileHash).toBe(result.fileHash);
+    expect((await statementContent(text + "\n03/01/2026\t20.000\tCà phê")).fileHash).not.toBe(result.fileHash);
+  });
+  it("rejects empty or oversized text without truncating it", async () => {
+    await expect(statementContent(" \r\n\t ")).rejects.toMatchObject({ code: "EMPTY_STATEMENT" });
+    await expect(statementContent("a".repeat(MAX_AI_STATEMENT_TEXT_LENGTH + 1))).rejects.toMatchObject({ status: 413 });
+    const text = "a\nb".repeat(MAX_AI_STATEMENT_TEXT_LENGTH / 3);
+    expect((await statementContent(text.replaceAll("\n", "\r\n"))).content).toEqual({ type: "input_text", text: JSON.stringify({ statementText: text }) });
+  });
   it.each(["pdf", "png", "jpg", "docx", "xls"])("rejects forged %s", async ext => {
     await expect(statementContent(new File(["not a file"], `fake.${ext}`))).rejects.toMatchObject({ status: 415 });
   });
@@ -38,6 +52,21 @@ describe("P0 statement formats", () => {
   });
 });
 describe("P0 staging integrity", () => {
+  it("stages pasted text through the same review and duplicate checks as files", async () => {
+    const create = vi.fn().mockResolvedValue({ id: "batch" }), createMany = vi.fn();
+    mocks.transaction.mockImplementation(async fn => fn({ $executeRaw: vi.fn(), importBatch: { findFirst: vi.fn().mockResolvedValue(null), create }, importRow: { createMany } }));
+    mocks.prior.mockResolvedValue([{ sourceHash: statementIdentity("wallet", row) }]);
+    const text = "02/01/2026 | Chi 50.000 VND | Dinner | ref1";
+    await previewAiStatement(context, text, "wallet");
+    expect(mocks.ai.mock.calls[0][2][1]).toEqual({ type: "input_text", text: JSON.stringify({ statementText: text }) });
+    expect(create.mock.calls[0][0].data.fileName).toBe("Sao kê từ văn bản");
+    expect(createMany.mock.calls[0][0].data[0]).toMatchObject({ status: "DUPLICATE", walletId: "wallet", amount: "50000" });
+    expect(mocks.premium).toHaveBeenCalled();
+  });
+  it("rejects oversized text before invoking AI or staging rows", async () => {
+    await expect(previewAiStatement(context, "a".repeat(MAX_AI_STATEMENT_TEXT_LENGTH + 1), "wallet")).rejects.toMatchObject({ status: 413 });
+    expect(mocks.ai).not.toHaveBeenCalled(); expect(mocks.transaction).not.toHaveBeenCalled();
+  });
   it("rejects foreign wallets before sending anything to the provider", async () => {
     mocks.walletCount.mockResolvedValue(0); await expect(previewAiStatement(context, png(), "foreign")).rejects.toMatchObject({ code: "INVALID_WALLET" }); expect(mocks.ai).not.toHaveBeenCalled();
   });

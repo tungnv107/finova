@@ -50,19 +50,28 @@ try {
   assert.equal(cookieResult.success, true);
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
   await navigate("/imports", "Đưa sao kê, AI điền giao dịch");
-  await until(() => evaluate("document.readyState === 'complete' && !!document.querySelector('#ai-reopen') && Object.keys(document.querySelector('#ai-reopen')).some(k=>k.startsWith('__reactProps'))"), "hydrated batch picker");
+  await until(() => evaluate("document.readyState === 'complete' && !!document.querySelector('#ai-statement-file') && Object.keys(document.querySelector('#ai-statement-file')).some(k=>k.startsWith('__reactProps'))"), "hydrated statement form");
+  assert.equal(await evaluate("!!document.querySelector('#ai-reopen')"), false, "removed AI batch picker");
   assert.equal(await evaluate("document.querySelector('#ai-statement-file').disabled || document.querySelector('#ai-statement-file').closest('fieldset').disabled"), true, "unconfigured provider UI");
-  await evaluate(`(() => { const s=document.querySelector('#ai-reopen'); s.value=${JSON.stringify(fixture.batchId)}; s.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  // An unconfigured provider cannot start a new AI preview. Review the isolated
+  // fixture via API, then continue through the CSV/XLSX import history UI.
+  const reviewStatus = await evaluate(`(async () => {
+    const batch = (await (await fetch('/api/v1/imports/${fixture.batchId}')).json()).data;
+    const row = batch.rows[0];
+    const response = await fetch('/api/v1/imports/${fixture.batchId}/rows/' + row.id, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: row.kind, amount: row.amount, date: row.date, categoryId: row.categoryId, destinationWalletId: null, note: row.note, confirmed: true })
+    });
+    return response.status;
+  })()`);
+  assert.equal(reviewStatus, 200, "fixture review API");
+  await evaluate("[...document.querySelectorAll('.import-desktop-table tr')].find(r=>r.textContent.includes('browser-statement.pdf')).querySelector('button').click()");
   await until(() => evaluate("document.body.innerText.includes('12345') || document.body.innerText.includes('12.345')"), "staged row");
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Kiểm tra / sửa dòng')).click()");
-  await until(() => evaluate("!![...document.querySelectorAll('button')].find(b=>b.textContent.includes('Xác nhận dữ liệu dòng này'))"), "review form");
   await screenshot("imports-desktop");
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Xác nhận dữ liệu dòng này')).click()");
-  await until(() => evaluate("document.body.innerText.includes('1 sẵn sàng')"), "row review saved");
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Xác nhận tự động nhập')).click()");
-  await until(() => evaluate("document.body.innerText.includes('1 đã nhập')"), "ledger commit");
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Xác nhận nhập các dòng hợp lệ')).click()");
+  await until(() => evaluate("document.body.innerText.includes('đã nhập 1')"), "ledger commit");
   const beforeRetry = await evaluate(`fetch('/api/v1/imports/${fixture.batchId}').then(r=>r.json())`);
-  assert.equal(beforeRetry.data.counts.IMPORTED, 1); results.push("UI review and commit");
+  assert.equal(beforeRetry.data.counts.IMPORTED, 1); results.push("API review and UI commit");
   await navigate("/insights", "Hiểu dòng tiền của bạn");
   assert.equal(await evaluate("document.body.innerText.includes('113.345')"), true, "expense after UI import");
   assert.equal(await evaluate("document.body.innerText.includes('Đã vượt hạn mức')"), true);
