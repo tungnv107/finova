@@ -29,7 +29,7 @@ export function CategorySuggestion({ note, kind, categories, onSelect, disabled 
   }
   return <div className={styles.suggestion}>
     {suggestion?.categoryId ? <><span>Gợi ý: <strong>{categories.find(c => c.id === suggestion.categoryId)?.name}</strong> · {Math.round(suggestion.confidence * 100)}% · {suggestion.reason}</span><button type="button" className="button button-outline" disabled={disabled || busy} onClick={() => onSelect(suggestion.categoryId!)}>Dùng danh mục này</button></> : <span>{suggestion?.reason || "Đang tìm trong lịch sử…"}</span>}
-    <button type="button" className="button button-outline" disabled={disabled || busy} onClick={askAi}>{busy ? "Đang gợi ý…" : "Gợi ý bằng AI"}</button><small>Bấm để gửi nội dung đã che chuỗi số dài/email và mẫu lịch sử tới OpenAI.</small>
+    <button type="button" className="button button-outline" disabled={disabled || busy} onClick={askAi}>{busy ? "Đang gợi ý…" : "Gợi ý bằng AI"}</button><small>Bấm để gửi nội dung đã che chuỗi số dài/email và mẫu lịch sử tới nhà cung cấp AI do quản trị viên cấu hình.</small>
     {error && <span role="alert" className="form-error">{error}</span>}
   </div>;
 }

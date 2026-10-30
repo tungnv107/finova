@@ -50,7 +50,7 @@ function ReviewRow({ row, batchId, categories, wallets, disabled, onSaved }: { r
   </article>;
 }
 
-export function AiStatementImporter({ wallets, categories, batches, available }: { wallets: Wallet[]; categories: Category[]; batches: { id: string; fileName: string }[]; available: boolean }) {
+export function AiStatementImporter({ wallets, categories, batches, available, pdfOnlyDocuments = false }: { wallets: Wallet[]; categories: Category[]; batches: { id: string; fileName: string }[]; available: boolean; pdfOnlyDocuments?: boolean }) {
   const router = useRouter();
   const [walletId, setWallet] = useState(wallets[0]?.id || ""), [file, setFile] = useState<File | null>(null), [consent, setConsent] = useState(false);
   const [batch, setBatch] = useState<Batch | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState(""), [progress, setProgress] = useState("");
@@ -80,6 +80,7 @@ export function AiStatementImporter({ wallets, categories, batches, available }:
   return <section className={`card card-pad ${styles.section}`}>
     <div className={styles.rowHeading}><div><span className={styles.eyebrow}><Sparkles size={16} /> TRỢ LÝ SAO KÊ</span><h2 className="section-title">Đưa sao kê, AI điền giao dịch</h2></div><FileUp size={28} /></div>
     <p className="section-subtitle">Ảnh PNG/JPG/WebP, PDF, Word DOC/DOCX, Excel XLS/XLSX hoặc CSV. Tối đa 5 MB và 200 giao dịch/lần. Word cần có văn bản; bản scan nên xuất PDF. XLSX/CSV dùng trang tính hiển thị đầu tiên, giá trị tĩnh.</p>
+    {pdfOnlyDocuments && <p className="section-subtitle">Với nhà cung cấp hiện tại, hãy chuyển Word sang PDF và XLS sang XLSX/CSV trước khi tải lên. Khả năng đọc ảnh và PDF phụ thuộc model được cấu hình.</p>}
     {!available && <p role="status" className={styles.warning}>AI chưa được cấu hình trên máy chủ. Bạn vẫn có thể nhập CSV/XLSX bằng ánh xạ cột bên dưới.</p>}
     {!wallets.length && <p>Tạo ví trước tại <a className="text-link" href="/wallets">Ví & tài khoản</a>.</p>}
     <form onSubmit={upload}><fieldset disabled={busy || !available}>
@@ -87,7 +88,7 @@ export function AiStatementImporter({ wallets, categories, batches, available }:
         <div className="field"><label htmlFor="ai-statement-file">Tệp sao kê</label><input id="ai-statement-file" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv" required onChange={e => { const value = e.target.files?.[0] ?? null; setFile(value); setError(value && value.size > 5 * 1024 * 1024 ? "Tệp vượt 5 MB." : ""); }} /></div>
         <div className="field"><label htmlFor="ai-statement-wallet">Nhập vào ví</label><select id="ai-statement-wallet" value={walletId} required onChange={e => setWallet(e.target.value)}>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
       </div>
-      <label className={styles.consent}><input type="checkbox" checked={consent} required onChange={e => setConsent(e.target.checked)} /> Tôi đồng ý gửi sao kê, danh mục và một phần nội dung lịch sử đã che chuỗi số dài/email tới OpenAI để phân tích. Tệp gốc có thể chứa thông tin tài khoản.</label>
+      <label className={styles.consent}><input type="checkbox" checked={consent} required onChange={e => setConsent(e.target.checked)} /> Tôi đồng ý gửi sao kê, danh mục và một phần nội dung lịch sử đã che chuỗi số dài/email tới nhà cung cấp AI do quản trị viên cấu hình để phân tích. Tệp gốc có thể chứa thông tin tài khoản.</label>
       <button type="submit" className="button button-primary" disabled={!walletId || !file || !consent || file.size > 5 * 1024 * 1024}>{busy ? "Đang phân tích…" : "Phân tích sao kê bằng AI"}</button>
     </fieldset></form>
     {error && <p role="alert" className="form-error">{error}</p>}{progress && <p role="status">{progress}</p>}

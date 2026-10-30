@@ -110,7 +110,7 @@ ${txt(798,1146,'Báo cáo trực quan',18,'#f5fbff',750)}${txt(798,1174,'Hiểu 
 
 ${rect(68,1247,391,78,23,'#00142e','opacity=".52" filter="url(#shadow)"')}
 ${rect(68,1240,391,78,23,'url(#button)')}
-${txt(96,1290,'Khám phá Finova',25,'#08345e',800)}
+${txt(96,1290,'Theo dõi Finova',25,'#08345e',800)}
 ${circle(418,1279,22,'#1e5eff')}${txt(418,1289,'→',28,'#ffffff',700,'text-anchor="middle"')}
 ${txt(1014,1277,'Quản lý tiền bạc đơn giản hơn.',18,'#c1d9eb',570,'text-anchor="end"')}
 ${txt(1014,1306,'Tự tin với kế hoạch của bạn.',18,'#c1d9eb',570,'text-anchor="end"')}
