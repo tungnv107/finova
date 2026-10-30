@@ -7,7 +7,7 @@ import { prisma } from "../src/lib/db";
 import { createWallet, createTransaction, refundTransaction, walletBalances } from "../src/server/ledger";
 import { seedCategories } from "../src/server/seed-categories";
 import { previewAiStatement, reviewStatementRow } from "../src/server/ai/statements";
-import { getImport, commitImport } from "../src/server/imports";
+import { getImport, commitImport, deleteImportRow } from "../src/server/imports";
 import { explainFinancialIntelligence, getFinancialIntelligence } from "../src/server/ai/insights";
 import { suggestCategory } from "../src/server/ai/classification";
 import { createBudget } from "../src/server/budgets";
@@ -97,8 +97,33 @@ try {
   const period = thisMonthRange();
   await createBudget(context, { name: "Ăn uống thông minh", scope: "CATEGORY", period: "MONTHLY", ...period, limitAmount: "90000", categoryIds: [food.id] });
   assert.equal((await getFinancialIntelligence(context.workspaceId)).forecasts[0].risk, "OVER");
-  // Leave a fresh uncertain row for the signed-session browser acceptance run.
-  responseRows = [{ ...base, reference: "qa-browser", amount: "12345", confidence: 0.2 }];
+  if (process.argv.includes("--review-ui")) {
+  // Verify resumable partial imports and deletion against real row locks.
+  responseRows = [{ ...base, reference: "qa-delete-ready" }, { ...base, reference: "qa-delete-review", confidence: 0.2 }];
+  const partial = await previewAiStatement(context, new File(["%PDF-1.4\ndelete"], "delete-check.pdf"), wallet.id);
+  await assert.rejects(() => deleteImportRow({ ...context, workspaceId: "foreign" }, partial.id, partial.rows[1].id), { code: "ROW_NOT_DELETABLE" });
+  const partialCommit = await commitImport(context, partial.id);
+  assert.equal(partialCommit.batch.status, "PREVIEW", "unreviewed rows keep the batch resumable");
+  await assert.rejects(() => deleteImportRow(context, partial.id, partial.rows[0].id), { code: "ROW_NOT_DELETABLE" });
+  await deleteImportRow(context, partial.id, partial.rows[1].id);
+  assert.equal((await getImport(context.workspaceId, partial.id)).total, 1);
+  responseRows = [{ ...base, reference: "qa-delete-race" }];
+  const race = await previewAiStatement(context, new File(["%PDF-1.4\nrace"], "race-check.pdf"), wallet.id);
+  const raceSource = await prisma.importRow.findFirstOrThrow({ where: { batchId: race.id } });
+  await Promise.allSettled([commitImport(context, race.id), deleteImportRow(context, race.id, race.rows[0].id)]);
+  const raceAfter = await getImport(context.workspaceId, race.id);
+  const raceTransactions = await prisma.transaction.count({ where: { workspaceId: context.workspaceId, idempotencyKey: `import:${raceSource.sourceHash}` } });
+  assert.ok(raceAfter.total === 0 || raceAfter.counts.IMPORTED === 1);
+  assert.equal(raceTransactions, raceAfter.counts.IMPORTED || 0, "delete/commit race leaves no orphan ledger write");
+  }
+  // Fresh rows for actual-browser review, reload, correction and deletion checks.
+  responseRows = process.argv.includes("--review-ui") ? [
+    { ...base, reference: "qa-browser", amount: "12345", confidence: 0.2 },
+    { ...base, reference: "qa-browser-income", kind: "INCOME", amount: "182000", categoryId: null, categoryConfidence: 0.2, note: "Nhận tiền bán sách", reason: "Cần chọn danh mục thu nhập" },
+    { ...base, reference: "qa-browser-delete", amount: "35000", note: "Cà phê sáng", confidence: 0.2 },
+    { ...base, reference: "qa-browser-ready", amount: "65000", note: "Bữa trưa văn phòng" },
+    { ...base, reference: "qa-browser-transfer", kind: "TRANSFER", amount: "100000", note: "Chuyển tiền tiết kiệm" },
+  ] : [{ ...base, reference: "qa-browser", amount: "12345", confidence: 0.2 }];
   const browserBatch = await previewAiStatement(context, new File(["%PDF-1.4\nbrowser"], "browser-statement.pdf"), wallet.id);
   const token = randomUUID();
   await prisma.session.create({ data: { id: randomUUID(), token, userId: id, expiresAt: new Date(Date.now() + 3600000) } });

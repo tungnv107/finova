@@ -49,7 +49,7 @@ try {
   const cookieResult = await cdp("Network.setCookie", { name: fixture.cookie.slice(0, split), value: decodeURIComponent(fixture.cookie.slice(split + 1)), url: base, path: "/", httpOnly: true, sameSite: "Lax" });
   assert.equal(cookieResult.success, true);
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1050, deviceScaleFactor: 1, mobile: false });
-  await navigate("/imports", "Đưa sao kê, AI điền giao dịch");
+  await navigate("/imports", "Thêm sao kê, để AI lo phần nhập liệu");
   await until(() => evaluate("document.readyState === 'complete' && !!document.querySelector('#ai-statement-file') && Object.keys(document.querySelector('#ai-statement-file')).some(k=>k.startsWith('__reactProps'))"), "hydrated statement form");
   assert.equal(await evaluate("!!document.querySelector('#ai-reopen')"), false, "removed AI batch picker");
   assert.equal(await evaluate("document.querySelector('#ai-statement-file').disabled || document.querySelector('#ai-statement-file').closest('fieldset').disabled"), true, "unconfigured provider UI");
@@ -68,8 +68,8 @@ try {
   await evaluate("[...document.querySelectorAll('.import-desktop-table tr')].find(r=>r.textContent.includes('browser-statement.pdf')).querySelector('button').click()");
   await until(() => evaluate("document.body.innerText.includes('12345') || document.body.innerText.includes('12.345')"), "staged row");
   await screenshot("imports-desktop");
-  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Xác nhận nhập các dòng hợp lệ')).click()");
-  await until(() => evaluate("document.body.innerText.includes('đã nhập 1')"), "ledger commit");
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Nhập 1 giao dịch vào ví')).click()");
+  await until(() => evaluate("document.body.innerText.includes('Đã ghi vào ví')"), "ledger commit");
   const beforeRetry = await evaluate(`fetch('/api/v1/imports/${fixture.batchId}').then(r=>r.json())`);
   assert.equal(beforeRetry.data.counts.IMPORTED, 1); results.push("API review and UI commit");
   await navigate("/insights", "Hiểu dòng tiền của bạn");
@@ -81,7 +81,7 @@ try {
   assert.equal(await evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), true, "mobile insights overflow");
   await navigate("/budgets", "Ngân sách thông minh");
   assert.equal(await evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), true, "mobile budgets overflow");
-  await navigate("/imports", "Đưa sao kê, AI điền giao dịch"); await screenshot("imports-mobile");
+  await navigate("/imports", "Thêm sao kê, để AI lo phần nhập liệu"); await screenshot("imports-mobile");
   assert.equal(await evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), true, "mobile import overflow");
   results.push("390px responsive insights, budgets and import");
   await navigate("/transactions", "Giao dịch");

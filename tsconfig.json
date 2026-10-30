@@ -52,7 +52,9 @@
     ".next-ad206-qa-20261026/types/**/*.ts",
     ".next-ad206-qa-20261026/dev/types/**/*.ts",
     ".next-build-qa-ad206-elevated/types/**/*.ts",
-    ".next-build-qa-ad206-elevated/dev/types/**/*.ts"
+    ".next-build-qa-ad206-elevated/dev/types/**/*.ts",
+    ".next-ai-p0-qa/types/**/*.ts",
+    ".next-ai-p0-qa/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

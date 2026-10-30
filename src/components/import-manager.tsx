@@ -2,11 +2,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { parseCsv } from "@/lib/csv-import";
+import { AiStatementImporter } from "./ai-statement-importer";
+import { ImportReview, type ImportBatch } from "./import-review";
 
-type ImportPreview = { id: string; fileName: string; status: string; counts: Record<string, number>; total: number; rows: { rowNumber: number; date: string | null; kind: string | null; amount: string | null; note: string | null; status: string; error: string | null }[] };
-type Props = { wallets: { id: string; name: string }[]; categories: { id: string; name: string; kind: string }[]; batches: { id: string; fileName: string; status: string; createdAt: Date }[] };
+type Props = { wallets: { id: string; name: string }[]; categories: { id: string; name: string; kind: string }[]; batches: { id: string; fileName: string; status: string; createdAt: Date }[]; initialPreview?: ImportBatch | null; initialError?: string; aiAvailable: boolean; pdfOnlyDocuments?: boolean };
 
-export function ImportManager({ wallets, categories, batches }: Props) {
+export function ImportManager({ wallets, categories, batches, initialPreview = null, initialError = "", aiAvailable, pdfOnlyDocuments }: Props) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -14,12 +15,21 @@ export function ImportManager({ wallets, categories, batches }: Props) {
   const [defaultKind, setDefaultKind] = useState<"EXPENSE" | "INCOME" | "TRANSFER">("EXPENSE");
   const [walletId, setWalletId] = useState(wallets[0]?.id || "");
   const [incomeCategoryId, setIncomeCategoryId] = useState(""), [expenseCategoryId, setExpenseCategoryId] = useState(""), [destinationWalletId, setDestinationWalletId] = useState("");
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [busy, setBusy] = useState(false), [error, setError] = useState(""), [progress, setProgress] = useState("");
-  const [batchId, setBatchId] = useState("");
+  const [preview, setPreview] = useState<ImportBatch | null>(initialPreview);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(initialError);
+  const [reviewLocked, setReviewLocked] = useState(false);
+
+  function showPreview(batch: ImportBatch) {
+    setPreview(batch); setError(""); setReviewLocked(false);
+    const url = new URL(window.location.href);
+    url.searchParams.set("batch", batch.id);
+    window.history.replaceState(null, "", url.pathname + url.search);
+    router.refresh();
+    requestAnimationFrame(() => document.getElementById("import-review")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
 
   async function onFile(selected?: File) {
-    setFile(selected || null); setPreview(null); setError(""); setHeaders([]);
+    setFile(selected || null); setError(""); setHeaders([]);
     if (!selected) return;
     if (selected.size > 5 * 1024 * 1024) { setError("Tệp vượt 5 MB."); return; }
     try {
@@ -43,53 +53,29 @@ export function ImportManager({ wallets, categories, batches }: Props) {
   }
   async function previewFile(e: React.FormEvent) {
     e.preventDefault(); if (!file) return;
-    setBusy(true); setError(""); setProgress("");
+    setBusy(true); setError(""); 
     try {
       const form = new FormData(); form.append("file", file);
       form.append("options", JSON.stringify({ dateColumn, amountColumn, ...(kindColumn ? { kindColumn } : {}), ...(noteColumn ? { noteColumn } : {}), defaultKind, walletId,
         ...(incomeCategoryId ? { incomeCategoryId } : {}), ...(expenseCategoryId ? { expenseCategoryId } : {}), ...(destinationWalletId ? { destinationWalletId } : {}) }));
       const r = await fetch("/api/v1/imports/preview", { method: "POST", body: form });
       const json = await r.json(); if (!r.ok) throw new Error(json.error?.message || "Không thể xem trước.");
-      setPreview(json.data); setBatchId(json.data.id); router.refresh();
+      showPreview(json.data);
     } catch (e) { setError(e instanceof Error ? e.message : "Lỗi kết nối."); }
     finally { setBusy(false); }
   }
   async function loadBatch(id: string) {
     setBusy(true); setError("");
-    try { const r = await fetch(`/api/v1/imports/${id}`); const json = await r.json(); if (!r.ok) throw new Error(json.error?.message || "Không tải được."); setPreview(json.data); setBatchId(id); }
+    try { const r = await fetch(`/api/v1/imports/${id}`); const json = await r.json(); if (!r.ok) throw new Error(json.error?.message || "Không tải được."); showPreview(json.data); }
     catch (e) { setError(e instanceof Error ? e.message : "Lỗi kết nối."); }
-    finally { setBusy(false); }
-  }
-  async function commit() {
-    if (!preview || !batchId) return;
-    setBusy(true); setError("");
-    try {
-      let remaining = 1, done = 0;
-      while (remaining > 0) {
-        const r = await fetch("/api/v1/imports/commit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ batchId }) });
-        const json = await r.json(); if (!r.ok) throw new Error(json.error?.message || "Ghi sổ thất bại.");
-        done += json.data.imported; remaining = json.data.remaining; setPreview(json.data.batch);
-        setProgress(`Đã ghi sổ ${done} dòng trong lần thực hiện này. Còn ${remaining} dòng hợp lệ cần xử lý.`);
-      }
-      router.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : "Lỗi kết nối; có thể tiếp tục đợt nhập."); }
-    finally { setBusy(false); }
-  }
-  async function retryFailed() {
-    if (!batchId) return;
-    setBusy(true); setError(""); setProgress("");
-    try {
-      const r = await fetch(`/api/v1/imports/${batchId}/retry`, { method: "POST" });
-      const json = await r.json();
-      if (!r.ok) throw new Error(json.error?.message || "Không thể thử lại dòng thất bại.");
-      setPreview(json.data.batch);
-      setProgress(`Đã đưa ${json.data.retried} dòng thất bại vào hàng chờ. Kiểm tra và xác nhận ghi sổ lại.`);
-      router.refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : "Lỗi kết nối."); }
     finally { setBusy(false); }
   }
   const column = (id: string, value: string, setter: (s: string) => void, optional = false) => <div className="field"><label htmlFor={id}>{id === "col-date" ? "Cột ngày" : id === "col-amount" ? "Cột số tiền" : id === "col-kind" ? "Cột loại giao dịch" : "Cột ghi chú"}</label><select id={id} value={value} onChange={e => setter(e.target.value)} required={!optional}><option value="">{optional ? "Không dùng" : "Chọn cột"}</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></div>;
   return <>
+    <AiStatementImporter wallets={wallets} available={aiAvailable} pdfOnlyDocuments={pdfOnlyDocuments} onPreview={showPreview} disabled={busy || reviewLocked} />
+    {error && <p role="alert" className="form-error">{error}</p>}
+    {preview && <ImportReview key={preview.id} batch={preview} wallets={wallets} categories={categories} onChange={setPreview} onLockedChange={setReviewLocked} />}
+
     <div className="page-head feature-page-head"><div><h2 className="section-title">Nhập CSV / XLSX bằng ánh xạ cột</h2><p className="subtitle">Xem trước và kiểm tra từng dòng trước khi ghi vào sổ cái. Không ghi dữ liệu ở bước xem trước.</p></div></div>
     <form onSubmit={previewFile} className="card card-pad" style={{ marginBottom: 22 }}>
       <h2 className="section-title">Chọn file và ánh xạ cột</h2><p className="section-subtitle">CSV UTF-8 hoặc XLSX (trang tính hiển thị đầu tiên), tối đa 5 MB và 10.000 dòng. Ngày YYYY-MM-DD hoặc DD/MM/YYYY, số tiền VND nguyên dương, loại INCOME / EXPENSE / TRANSFER (hoặc THU / CHI / CHUYỂN). XLSX phải có giá trị tĩnh, không chứa công thức.</p>
@@ -101,32 +87,14 @@ export function ImportManager({ wallets, categories, batches }: Props) {
         <div className="field"><label htmlFor="income-category">Danh mục thu</label><select id="income-category" value={incomeCategoryId} onChange={e => setIncomeCategoryId(e.target.value)}><option value="">Chọn danh mục</option>{categories.filter(c => c.kind === "INCOME").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
         <div className="field"><label htmlFor="expense-category">Danh mục chi</label><select id="expense-category" value={expenseCategoryId} onChange={e => setExpenseCategoryId(e.target.value)}><option value="">Chọn danh mục</option>{categories.filter(c => c.kind === "EXPENSE").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
         <div className="field"><label htmlFor="dest-wallet">Ví nhận (nếu chuyển)</label><select id="dest-wallet" value={destinationWalletId} onChange={e => setDestinationWalletId(e.target.value)}><option value="">Chọn ví nhận</option>{wallets.filter(w => w.id !== walletId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
-      </div><div className="form-footer"><button className="button button-primary" disabled={busy || !headers.length || !walletId} type="submit">Xem trước dữ liệu</button></div>
+      </div><div className="form-footer"><button className="button button-primary" disabled={busy || reviewLocked || !headers.length || !walletId} type="submit">Xem trước dữ liệu</button></div>
     </form>
-    {error && <p role="alert" className="form-error">{error}</p>}{progress && <p role="status">{progress}</p>}
-    {preview && <section className="card card-pad" style={{ marginBottom: 22 }}><div className="section-header"><h2 className="section-title">Kết quả xem trước: {preview.fileName}</h2><a className="text-link" href={`/api/v1/imports/${preview.id}/errors.csv`}>Tải báo cáo dòng lỗi/trùng</a></div>
-      <p>Tổng {preview.total} dòng: hợp lệ {preview.counts.VALID || 0}, đã nhập {preview.counts.IMPORTED || 0}, trùng {preview.counts.DUPLICATE || 0}, lỗi {preview.counts.INVALID || 0}, ghi thất bại {preview.counts.FAILED || 0}.</p>
-      <div className="import-actions">
-        {(preview.counts.VALID || 0) > 0 && <button type="button" className="button button-primary" disabled={busy} onClick={commit}>{busy ? "Đang ghi sổ…" : "Xác nhận nhập các dòng hợp lệ"}</button>}
-        {(preview.counts.FAILED || 0) > 0 && <button type="button" className="button button-outline" disabled={busy} onClick={retryFailed}>Thử lại các dòng ghi thất bại</button>}
-      </div>
-      <div className="table-wrap import-desktop-table" style={{ marginTop: 14 }}><table><thead><tr><th>Dòng</th><th>Ngày</th><th>Loại</th><th>Số tiền</th><th>Kết quả</th></tr></thead><tbody>{preview.rows.map(row => <tr key={row.rowNumber}><td>{row.rowNumber}</td><td>{row.date || "—"}</td><td>{row.kind || "—"}</td><td>{row.amount || "—"}</td><td>{row.error || row.status}</td></tr>)}</tbody></table></div>
-      <div className="import-mobile-list" aria-label="Các dòng xem trước">
-        {preview.rows.map(row => <article className="import-mobile-card" key={row.rowNumber}>
-          <div className="import-mobile-card-head"><strong>Dòng {row.rowNumber}</strong><span className={`import-status ${row.status === "VALID" || row.status === "IMPORTED" ? "is-success" : row.status === "DUPLICATE" ? "is-warning" : "is-error"}`}>{row.status}</span></div>
-          <div className="import-mobile-details"><span>Ngày</span><strong>{row.date || "—"}</strong><span>Loại</span><strong>{row.kind || "—"}</strong><span>Số tiền</span><strong>{row.amount || "—"}</strong></div>
-          {row.error && <p className="import-row-error">{row.error}</p>}
-          {row.note && <p className="section-subtitle">{row.note}</p>}
-        </article>)}
-      </div>
-      <p className="section-subtitle">Hiển thị 200 dòng đầu; kết quả tổng hợp áp dụng cho toàn tệp.</p>
-    </section>}
     <section className="card card-pad"><h2 className="section-title">Các đợt nhập gần đây</h2>{!batches.length ? <p>Chưa có đợt nhập.</p> : <>
-      <div className="table-wrap import-desktop-table"><table><thead><tr><th>Tệp</th><th>Ngày</th><th>Trạng thái</th><th>Xem</th></tr></thead><tbody>{batches.map(b => <tr key={b.id}><td>{b.fileName}</td><td>{new Date(b.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</td><td>{b.status === "COMPLETE" ? "Đã xử lý" : "Xem trước"}</td><td><button type="button" className="button button-outline" disabled={busy} onClick={() => loadBatch(b.id)}>Mở</button></td></tr>)}</tbody></table></div>
+      <div className="table-wrap import-desktop-table"><table><thead><tr><th>Tệp</th><th>Ngày</th><th>Trạng thái</th><th>Xem</th></tr></thead><tbody>{batches.map(b => <tr key={b.id}><td>{b.fileName}</td><td>{new Date(b.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</td><td>{b.status === "COMPLETE" ? "Đã xử lý" : "Xem trước"}</td><td><button type="button" className="button button-outline" disabled={busy || reviewLocked} onClick={() => loadBatch(b.id)}>Mở</button></td></tr>)}</tbody></table></div>
       <div className="import-mobile-list">{batches.map(b => <article className="import-mobile-card" key={b.id}>
         <div className="import-mobile-card-head"><strong>{b.fileName}</strong><span className="import-status">{b.status === "COMPLETE" ? "Đã xử lý" : "Xem trước"}</span></div>
         <p className="section-subtitle">{new Date(b.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</p>
-        <button type="button" className="button button-outline" disabled={busy} onClick={() => loadBatch(b.id)}>Mở đợt nhập</button>
+        <button type="button" className="button button-outline" disabled={busy || reviewLocked} onClick={() => loadBatch(b.id)}>Mở đợt nhập</button>
       </article>)}</div>
     </>}</section>
   </>;

@@ -105,6 +105,21 @@ export async function getImport(workspaceId: string, id: string) {
       categoryId: row.categoryId, destinationWalletId: row.destinationWalletId, walletId: row.walletId, confidence: row.confidence, categoryReason: row.categoryReason, needsReview: row.needsReview, sourceReference: row.sourceReference })) };
 }
 
+/** Remove only staging data. The same row lock as commit prevents deleting a posted row. */
+export async function deleteImportRow(context: UserContext, batchId: string, rowId: string) {
+  return serializable(async tx => {
+    await requireWorkspacePremiumInDb(tx, context.workspaceId, "STATEMENT_IMPORT");
+    const removed = await tx.importRow.deleteMany({
+      where: { id: rowId, batchId, workspaceId: context.workspaceId, transactionId: null,
+        status: { in: ["VALID", "INVALID", "FAILED", "DUPLICATE"] } },
+    });
+    if (!removed.count) throw new HttpError(409, "ROW_NOT_DELETABLE", "Dòng đã nhập hoặc không còn tồn tại. Hãy tải lại đợt nhập.");
+    const pending = await tx.importRow.count({ where: { batchId, workspaceId: context.workspaceId, status: { in: ["VALID", "INVALID", "FAILED"] } } });
+    await tx.importBatch.update({ where: { id: batchId, workspaceId: context.workspaceId }, data: { status: pending ? "PREVIEW" : "COMPLETE" } });
+    return { deleted: true };
+  });
+}
+
 export async function commitImport(context: UserContext, id: string) {
   const batch = await prisma.importBatch.findFirst({ where: { id, workspaceId: context.workspaceId } });
   if (!batch) throw new HttpError(404, "NOT_FOUND", "Không tìm thấy đợt nhập.");
@@ -151,7 +166,11 @@ export async function commitImport(context: UserContext, id: string) {
     }
   }
   const remaining = await prisma.importRow.count({ where: { batchId: id, workspaceId: context.workspaceId, status: "VALID" } });
-  if (!remaining) await prisma.importBatch.update({ where: { id, workspaceId: context.workspaceId }, data: { status: "COMPLETE" } });
+  // A partially reviewed batch remains resumable, even when no VALID rows remain.
+  await serializable(async db => {
+    const pending = await db.importRow.count({ where: { batchId: id, workspaceId: context.workspaceId, status: { in: ["VALID", "INVALID", "FAILED"] } } });
+    await db.importBatch.update({ where: { id, workspaceId: context.workspaceId }, data: { status: pending ? "PREVIEW" : "COMPLETE" } });
+  });
   return { imported, failed, remaining, batch: await getImport(context.workspaceId, id) };
 }
 

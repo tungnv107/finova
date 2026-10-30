@@ -134,7 +134,7 @@ export async function reviewStatementRow(context: UserContext, batchId: string, 
   return serializable(async tx => {
     await requireWorkspacePremiumInDb(tx, context.workspaceId, "STATEMENT_IMPORT");
     // Same row lock as commitImport: corrections cannot race with journal creation.
-    const claimed = await tx.importRow.updateMany({ where: { id: rowId, batchId, workspaceId: context.workspaceId, confidence: { not: null }, status: { in: ["VALID", "INVALID", "FAILED"] } }, data: { error: null } });
+    const claimed = await tx.importRow.updateMany({ where: { id: rowId, batchId, workspaceId: context.workspaceId, transactionId: null, status: { in: ["VALID", "INVALID", "FAILED"] } }, data: { error: null } });
     if (!claimed.count) throw new HttpError(409, "ROW_NOT_EDITABLE", "Dòng đã nhập, bị trùng hoặc không còn có thể chỉnh sửa.");
     const row = await tx.importRow.findUniqueOrThrow({ where: { id: rowId } });
     if (input.kind === "TRANSFER") {
