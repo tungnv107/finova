@@ -6,6 +6,7 @@ import { ThemeSelector } from "@/components/theme-selector";
 import { hasPremiumFeature } from "@/server/premium";
 
 const features = [
+  { href: "/insights", title: "Phân tích thông minh", detail: "Xu hướng và ngân sách AI", icon: ChartNoAxesCombined },
   { href: "/reports", title: "Báo cáo", detail: "Dòng tiền và tài sản", icon: ChartNoAxesCombined },
   { href: "/budgets", title: "Ngân sách", detail: "Theo dõi hạn mức", icon: ChartPie },
   { href: "/goals", title: "Mục tiêu", detail: "Kế hoạch tiết kiệm", icon: Target },

@@ -90,7 +90,7 @@ export function ImportManager({ wallets, categories, batches }: Props) {
   }
   const column = (id: string, value: string, setter: (s: string) => void, optional = false) => <div className="field"><label htmlFor={id}>{id === "col-date" ? "Cột ngày" : id === "col-amount" ? "Cột số tiền" : id === "col-kind" ? "Cột loại giao dịch" : "Cột ghi chú"}</label><select id={id} value={value} onChange={e => setter(e.target.value)} required={!optional}><option value="">{optional ? "Không dùng" : "Chọn cột"}</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></div>;
   return <>
-    <div className="page-head feature-page-head"><div><h1 className="page-title">Nhập CSV / XLSX</h1><p className="subtitle">Xem trước và kiểm tra từng dòng trước khi ghi vào sổ cái. Không ghi dữ liệu ở bước xem trước.</p></div></div>
+    <div className="page-head feature-page-head"><div><h2 className="section-title">Nhập CSV / XLSX bằng ánh xạ cột</h2><p className="subtitle">Xem trước và kiểm tra từng dòng trước khi ghi vào sổ cái. Không ghi dữ liệu ở bước xem trước.</p></div></div>
     <form onSubmit={previewFile} className="card card-pad" style={{ marginBottom: 22 }}>
       <h2 className="section-title">Chọn file và ánh xạ cột</h2><p className="section-subtitle">CSV UTF-8 hoặc XLSX (trang tính hiển thị đầu tiên), tối đa 5 MB và 10.000 dòng. Ngày YYYY-MM-DD hoặc DD/MM/YYYY, số tiền VND nguyên dương, loại INCOME / EXPENSE / TRANSFER (hoặc THU / CHI / CHUYỂN). XLSX phải có giá trị tĩnh, không chứa công thức.</p>
       <div className="form-grid" style={{ marginTop: 20 }}>
@@ -119,7 +119,7 @@ export function ImportManager({ wallets, categories, batches }: Props) {
           {row.note && <p className="section-subtitle">{row.note}</p>}
         </article>)}
       </div>
-      <p className="section-subtitle">Hiển thị 100 dòng đầu; kết quả tổng hợp áp dụng cho toàn tệp.</p>
+      <p className="section-subtitle">Hiển thị 200 dòng đầu; kết quả tổng hợp áp dụng cho toàn tệp.</p>
     </section>}
     <section className="card card-pad"><h2 className="section-title">Các đợt nhập gần đây</h2>{!batches.length ? <p>Chưa có đợt nhập.</p> : <>
       <div className="table-wrap import-desktop-table"><table><thead><tr><th>Tệp</th><th>Ngày</th><th>Trạng thái</th><th>Xem</th></tr></thead><tbody>{batches.map(b => <tr key={b.id}><td>{b.fileName}</td><td>{new Date(b.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</td><td>{b.status === "COMPLETE" ? "Đã xử lý" : "Xem trước"}</td><td><button type="button" className="button button-outline" disabled={busy} onClick={() => loadBatch(b.id)}>Mở</button></td></tr>)}</tbody></table></div>

@@ -14,6 +14,7 @@ const primary = [
   { href: "/reports", label: "Báo cáo", icon: ChartNoAxesCombined },
 ];
 const planning = [
+  { href: "/insights", label: "Phân tích thông minh", icon: ChartNoAxesCombined },
   { href: "/budgets", label: "Ngân sách", icon: ChartPie },
   { href: "/goals", label: "Mục tiêu", icon: Target },
   { href: "/recurring", label: "Định kỳ", icon: CalendarClock },
@@ -71,7 +72,7 @@ const pageTitles: Record<string, string> = {
   "/reports": "Báo cáo", "/budgets": "Ngân sách", "/goals": "Mục tiêu",
   "/categories": "Danh mục", "/recurring": "Định kỳ", "/cards": "Thẻ tín dụng",
   "/debts": "Vay nợ", "/imports": "Nhập sao kê", "/notifications": "Thông báo",
-  "/settings": "Cài đặt tài khoản", "/bank-sync": "Đồng bộ sao kê",
+  "/insights": "Phân tích thông minh", "/settings": "Cài đặt tài khoản", "/bank-sync": "Đồng bộ sao kê",
 };
 
 export function PageLocation() {

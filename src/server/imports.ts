@@ -97,11 +97,12 @@ export async function getImport(workspaceId: string, id: string) {
   if (!batch) throw new HttpError(404, "NOT_FOUND", "Không tìm thấy đợt nhập.");
   const [groups, rows] = await Promise.all([
     prisma.importRow.groupBy({ by: ["status"], where: { batchId: id, workspaceId }, _count: { _all: true } }),
-    prisma.importRow.findMany({ where: { batchId: id, workspaceId }, orderBy: { rowNumber: "asc" }, take: 100 }),
+    prisma.importRow.findMany({ where: { batchId: id, workspaceId }, orderBy: { rowNumber: "asc" }, take: 200 }),
   ]);
   const counts = Object.fromEntries(groups.map(g => [g.status, g._count._all]));
   return { id: batch.id, fileName: batch.fileName, status: batch.status, counts, total: groups.reduce((s, g) => s + g._count._all, 0),
-    rows: rows.map(row => ({ rowNumber: row.rowNumber, kind: row.kind, amount: row.amount?.toFixed(0), date: row.occurredAt ? localDay(row.occurredAt) : null, note: row.note, status: row.status, error: row.error })) };
+    rows: rows.map(row => ({ id: row.id, rowNumber: row.rowNumber, kind: row.kind, amount: row.amount?.toFixed(0), date: row.occurredAt ? localDay(row.occurredAt) : null, note: row.note, status: row.status, error: row.error,
+      categoryId: row.categoryId, destinationWalletId: row.destinationWalletId, walletId: row.walletId, confidence: row.confidence, categoryReason: row.categoryReason, needsReview: row.needsReview, sourceReference: row.sourceReference })) };
 }
 
 export async function commitImport(context: UserContext, id: string) {
@@ -120,7 +121,7 @@ export async function commitImport(context: UserContext, id: string) {
         });
         if (!claimed.count) return "SKIPPED";
         const current = await db.importRow.findUniqueOrThrow({ where: { id: row.id, workspaceId: context.workspaceId } });
-        if (!current.kind || !current.walletId || !current.amount || !current.occurredAt) throw new Error("Dữ liệu nhập không đầy đủ.");
+        if (current.needsReview || !current.kind || !current.walletId || !current.amount || !current.occurredAt) throw new Error("Dữ liệu nhập chưa được xác nhận đầy đủ.");
         const key = `import:${current.sourceHash}`;
         const existing = await db.transaction.findFirst({ where: { workspaceId: context.workspaceId, idempotencyKey: key } });
         // Reconcile legacy post-before-link rows, but mark subsequent batches as duplicates.

@@ -1,4 +1,5 @@
 "use client";
+import { CategorySuggestion } from "@/components/category-suggestion";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -92,7 +93,7 @@ function QuickTransactionDialog({ onClose, initialKind }: { onClose: () => void;
         <div className="field"><label htmlFor="quick-wallet">Ví nguồn</label><select id="quick-wallet" required value={walletId} onChange={e => { const next = e.target.value; setWalletId(next); if (destinationWalletId === next) setDestinationWalletId(wallets.find(w => w.id !== next)?.id ?? ""); }}>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
         {kind === "TRANSFER" ? <><div className="field"><label htmlFor="quick-dest">Ví nhận</label><select id="quick-dest" required value={destinationWalletId} onChange={e => setDestinationWalletId(e.target.value)}><option value="">Chọn ví nhận</option>{wallets.filter(w => w.id !== walletId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div><div className="field"><label htmlFor="quick-fee">Phí chuyển tiền (VND)</label><input id="quick-fee" required inputMode="numeric" pattern="(0|[1-9][0-9]*)" value={feeAmount} onChange={e => setFeeAmount(e.target.value)} /></div></> : <div className="field"><label htmlFor="quick-category">Danh mục</label><select id="quick-category" required value={categoryId} onChange={e => setCategoryId(e.target.value)}><option value="">Chọn danh mục</option>{categories.filter(c => c.kind === kind).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
         <div className="field"><label htmlFor="quick-note">Ghi chú (không bắt buộc)</label><textarea id="quick-note" maxLength={1000} placeholder="Thêm mô tả cho giao dịch" value={note} onChange={e => setNote(e.target.value)} /></div>
-        {error && <p role="alert" className="form-error">{error}</p>}
+        <CategorySuggestion note={note} kind={kind} categories={categories} onSelect={setCategoryId} disabled={busy} />{error && <p role="alert" className="form-error">{error}</p>}
         <button className="button button-primary quick-submit" disabled={busy || (kind === "TRANSFER" && wallets.length < 2)} type="submit">{busy ? "Đang ghi sổ…" : "Lưu giao dịch"}</button>
       </form>}
     </div>

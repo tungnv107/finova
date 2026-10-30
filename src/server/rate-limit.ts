@@ -5,10 +5,11 @@ import { prisma } from "@/lib/db";
 import type { UserContext } from "@/server/context";
 import { HttpError } from "@/server/context";
 
-export type RateLimitPolicy = "mutation" | "upload" | "export" | "sync" | "scheduler" | "report" | "auth-global" | "auth-client";
+export type RateLimitPolicy = "ai" | "mutation" | "upload" | "export" | "sync" | "scheduler" | "report" | "auth-global" | "auth-client";
 
 // Fixed one-minute windows, enforced by PostgreSQL's atomic UPSERT.
 export const RATE_LIMITS: Record<RateLimitPolicy, number> = {
+  ai: 6,
   mutation: 90,
   upload: 12,
   export: 20,
@@ -22,6 +23,9 @@ export const RATE_LIMITS: Record<RateLimitPolicy, number> = {
 
 export function policyForRequest(request: Pick<NextRequest, "method" | "nextUrl">): RateLimitPolicy | null {
   const path = request.nextUrl.pathname;
+  if (path === "/api/v1/imports/ai" || (path === "/api/v1/ai/insights" && request.method === "POST")) return "ai";
+  if (path === "/api/v1/ai/classify") return "sync";
+  if (path === "/api/v1/ai/insights") return "report";
   if (path.startsWith("/api/v1/exports/") || path.endsWith("/errors.csv")) return "export";
   if (request.method === "GET" && (path.startsWith("/api/v1/reports/") || path === "/api/v1/transactions")) return "report";
   if (request.method === "GET" || request.method === "HEAD") return null;

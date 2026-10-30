@@ -1,0 +1,29 @@
+.section { margin-bottom: 24px; }
+.section fieldset { border: 0; padding: 0; margin: 18px 0; min-width: 0; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; color: var(--finova-primary); font-size: 12px; font-weight: 700; letter-spacing: .08em; margin-bottom: 8px; }
+.rowHeading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.consent { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; font-size: 13px; line-height: 1.65; }
+.consent input { width: 18px; height: 18px; flex: 0 0 18px; margin-top: 4px; }
+.warning { color: var(--finova-warning); }
+.good { color: var(--finova-income); }
+.block { display: block; margin: 8px 0; }
+.reviewList { display: grid; gap: 14px; margin-top: 20px; }
+.reviewRow { border: 1px solid var(--finova-border); border-radius: 14px; padding: 18px; overflow-wrap: anywhere; }
+.reviewRow p { margin: 8px 0; }
+.reviewRow small { color: var(--finova-text-muted); }
+.reviewRow button { margin-top: 12px; }
+.reviewForm { margin-top: 14px; }
+.note { white-space: pre-wrap; }
+.results { margin-top: 24px; }
+.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.metric { border: 1px solid var(--finova-border); border-radius: 16px; padding: 18px; }
+.metric span { display: block; font-size: 13px; color: var(--finova-text-muted); }
+.metric strong { display: block; margin-top: 10px; font-size: clamp(18px, 1.8vw, 26px); overflow-wrap: anywhere; }
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.cards article { border: 1px solid var(--finova-border); padding: 20px; border-radius: 16px; }
+.cards h3 { margin: 0 0 10px; }
+.cards p { line-height: 1.7; }
+.suggestion { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 13px; }
+.suggestion button { font-size: 13px; }
+@media (max-width: 760px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cards { grid-template-columns: 1fr; } .reviewRow { padding: 14px; } }
+@media (max-width: 380px) { .metrics { grid-template-columns: 1fr; } }
