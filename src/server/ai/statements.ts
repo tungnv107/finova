@@ -69,6 +69,18 @@ export function statementIdentity(walletId: string, row: { reference?: string | 
 
 export async function previewAiStatement(context: UserContext, file: File | string, walletId: string) {
   if (!await prisma.wallet.count({ where: { id: walletId, workspaceId: context.workspaceId, archivedAt: null } })) throw new HttpError(422, "INVALID_WALLET", "Ví không hợp lệ.");
+  // Check the AI staging columns before sending the user's statement to a paid provider.
+  try {
+    await prisma.importRow.findFirst({ where: { workspaceId: context.workspaceId }, select: {
+      sourceReference: true, confidence: true, categoryReason: true, needsReview: true,
+    } });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && ["P2021", "P2022"].includes(error.code)) {
+      console.warn("AI statement schema unavailable", { prismaCode: error.code, migration: "20261029090000_ai_statement_review" });
+      throw new HttpError(503, "AI_IMPORT_MIGRATION_REQUIRED", "Cơ sở dữ liệu chưa được cập nhật cho nhập sao kê AI. Quản trị viên cần chạy migration 20261029090000_ai_statement_review trên máy chủ.");
+    }
+    throw error;
+  }
   const { content, fileHash } = await statementContent(file);
   const { categories, history } = await classificationContext(context.workspaceId);
   const extracted = await aiJson("bank_statement", `Read every transaction from this bank statement, at most ${MAX_AI_ROWS}. Return complete=false if unreadable, cropped, missing pages, over the limit or only a summary is available. Never invent rows. Preserve identical real transactions separately. Exclude opening/closing balances, totals and headers. Amount is positive integer VND without separators; debit is EXPENSE and credit INCOME. TRANSFER only when clearly an internal transfer between the user's own accounts. Preserve bank transaction reference, or null. Date is YYYY-MM-DD; ambiguous fields must be null and low confidence. Never infer currency from language alone. Match only allowed category IDs of the same kind, otherwise null. Confidence refers to extraction, categoryConfidence to category. Explain uncertainty in Vietnamese.`,

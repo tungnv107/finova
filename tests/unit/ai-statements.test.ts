@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ExcelJS from "exceljs";
+import { Prisma } from "@finova/prisma";
 import { MAX_AI_STATEMENT_TEXT_LENGTH } from "@/lib/ai-statement-limits";
 import { previewAiStatement, statementContent, statementIdentity } from "@/server/ai/statements";
-const mocks = vi.hoisted(() => ({ walletCount: vi.fn(), categories: vi.fn(), history: vi.fn(), prior: vi.fn(), transaction: vi.fn(), ai: vi.fn(), getImport: vi.fn(), premium: vi.fn() }));
-vi.mock("@/lib/db", () => ({ prisma: { wallet: { count: mocks.walletCount }, category: { findMany: mocks.categories }, transaction: { findMany: mocks.history }, importRow: { findMany: mocks.prior }, $transaction: mocks.transaction } }));
+const mocks = vi.hoisted(() => ({ walletCount: vi.fn(), schemaCheck: vi.fn(), categories: vi.fn(), history: vi.fn(), prior: vi.fn(), transaction: vi.fn(), ai: vi.fn(), getImport: vi.fn(), premium: vi.fn() }));
+vi.mock("@/lib/db", () => ({ prisma: { wallet: { count: mocks.walletCount }, category: { findMany: mocks.categories }, transaction: { findMany: mocks.history }, importRow: { findFirst: mocks.schemaCheck, findMany: mocks.prior }, $transaction: mocks.transaction } }));
 vi.mock("@/server/ai/provider", () => ({ aiJson: mocks.ai }));
 vi.mock("@/server/imports", () => ({ getImport: mocks.getImport }));
 vi.mock("@/server/premium", () => ({ requireWorkspacePremiumInDb: mocks.premium }));
@@ -11,7 +12,7 @@ const context = { userId: "u", workspaceId: "ws", name: "test", image: null };
 const row = { date: "2026-01-02", amount: "50000", kind: "EXPENSE", note: "Dinner", reference: "ref1", categoryId: "c", confidence: 0.99, categoryConfidence: 0.99, reason: "Food" };
 const png = () => new File([Buffer.from("89504e470d0a1a0a0000", "hex")], "test.png");
 beforeEach(() => {
-  vi.resetAllMocks(); mocks.walletCount.mockResolvedValue(1); mocks.categories.mockResolvedValue([{ id: "c", name: "Ăn uống", kind: "EXPENSE" }]); mocks.history.mockResolvedValue([]); mocks.prior.mockResolvedValue([]);
+  vi.resetAllMocks(); mocks.walletCount.mockResolvedValue(1); mocks.schemaCheck.mockResolvedValue(null); mocks.categories.mockResolvedValue([{ id: "c", name: "Ăn uống", kind: "EXPENSE" }]); mocks.history.mockResolvedValue([]); mocks.prior.mockResolvedValue([]);
   mocks.ai.mockResolvedValue({ currency: "VND", complete: true, warnings: [], rows: [row] }); mocks.getImport.mockResolvedValue({ id: "batch" });
 });
 describe("P0 statement formats", () => {
@@ -52,6 +53,24 @@ describe("P0 statement formats", () => {
   });
 });
 describe("P0 staging integrity", () => {
+  it.each(["P2021", "P2022"])("reports an unapplied AI migration (%s) before calling the provider", async code => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mocks.schemaCheck.mockRejectedValue(new Prisma.PrismaClientKnownRequestError("PRIVATE_DATABASE_DETAILS", { code, clientVersion: "6.19.3" }));
+      const error = await previewAiStatement(context, "Chi 50.000 VND", "wallet").catch(e => e);
+      expect(error).toMatchObject({ status: 503, code: "AI_IMPORT_MIGRATION_REQUIRED" });
+      expect(error.message).toContain("20261029090000_ai_statement_review");
+      expect(error.message).not.toContain("PRIVATE_DATABASE_DETAILS");
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("PRIVATE_DATABASE_DETAILS");
+      expect(mocks.ai).not.toHaveBeenCalled(); expect(mocks.transaction).not.toHaveBeenCalled();
+    } finally { warning.mockRestore(); }
+  });
+  it("does not disguise other database failures as a missing migration", async () => {
+    const error = new Error("connection unavailable");
+    mocks.schemaCheck.mockRejectedValue(error);
+    await expect(previewAiStatement(context, "Chi 50.000 VND", "wallet")).rejects.toBe(error);
+    expect(mocks.ai).not.toHaveBeenCalled();
+  });
   it("stages pasted text through the same review and duplicate checks as files", async () => {
     const create = vi.fn().mockResolvedValue({ id: "batch" }), createMany = vi.fn();
     mocks.transaction.mockImplementation(async fn => fn({ $executeRaw: vi.fn(), importBatch: { findFirst: vi.fn().mockResolvedValue(null), create }, importRow: { createMany } }));

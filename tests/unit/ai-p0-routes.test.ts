@@ -29,6 +29,13 @@ describe("P0 HTTP boundaries", () => {
     const form = new FormData(); form.append("file", new File(["%PDF-1.4"], "a.pdf")); form.append("walletId", "wallet");
     expect((await importPost(new NextRequest("http://localhost/api/v1/imports/ai", { method: "POST", body: form }))).status).toBe(400); expect(mocks.preview).not.toHaveBeenCalled();
   });
+  it("returns an actionable migration error instead of a generic 500", async () => {
+    const form = new FormData(); form.append("text", "Chi 50.000 VND"); form.append("walletId", "wallet"); form.append("consent", "true");
+    mocks.preview.mockRejectedValue(new HttpError(503, "AI_IMPORT_MIGRATION_REQUIRED", "Cơ sở dữ liệu chưa được cập nhật cho nhập sao kê AI."));
+    const response = await importPost(new NextRequest("http://localhost/api/v1/imports/ai", { method: "POST", body: form }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ error: { code: "AI_IMPORT_MIGRATION_REQUIRED" } });
+  });
   it.each(["file", "text"])("accepts a %s statement with wallet and consent", async source => {
     const form = new FormData();
     const text = "02/01/2026 | Chi 50.000 VND | Ăn trưa";
