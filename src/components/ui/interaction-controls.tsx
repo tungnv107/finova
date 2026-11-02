@@ -99,8 +99,8 @@ export function SegmentedControl<T extends string>({ label, options, value, onCh
   </div>;
 }
 
-export function ContentTabs<T extends string>({ idBase, label, options, value, onChange }: {
-  idBase: string; label: string; options: readonly Choice<T>[]; value: T; onChange: (value: T) => void;
+export function ContentTabs<T extends string>({ idBase, label, options, value, onChange, className = "" }: {
+  idBase: string; label: string; options: readonly Choice<T>[]; value: T; onChange: (value: T) => void; className?: string;
 }) {
   const handleKey = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
@@ -108,7 +108,7 @@ export function ContentTabs<T extends string>({ idBase, label, options, value, o
     event.preventDefault(); onChange(options[next].value);
     event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
   };
-  return <><div role="tablist" aria-label={label} className="v4-tablist">
+  return <><div role="tablist" aria-label={label} className={`v4-tablist ${className}`}>
     {options.map((option, index) => <button key={option.value} id={`${idBase}-tab-${option.value}`} type="button" role="tab"
       aria-controls={`${idBase}-panel-${option.value}`} aria-selected={value === option.value} tabIndex={value === option.value ? 0 : -1}
       disabled={option.disabled} onKeyDown={e => handleKey(e, index)} onClick={() => onChange(option.value)}>{option.label}</button>)}

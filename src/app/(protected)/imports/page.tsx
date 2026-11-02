@@ -24,5 +24,5 @@ export default async function ImportsPage({ searchParams }: { searchParams: Prom
     prisma.category.findMany({ where: { workspaceId, archivedAt: null }, select: { id: true, name: true, kind: true } }),
     prisma.importBatch.findMany({ where: { workspaceId }, orderBy: { createdAt: "desc" }, take: 20, select: { id: true, fileName: true, status: true, createdAt: true } }),
   ]);
-  return <><div className="page-head"><div><h1 className="page-title">Nhập sao kê thông minh</h1><p className="subtitle">AI đọc, phân loại và chuẩn bị giao dịch để nhập vào ví.</p></div></div><ImportManager aiAvailable={aiConfigured()} pdfOnlyDocuments={aiUsesChatCompletions()} wallets={wallets.filter(w => !w.archived).map(w => ({ id: w.id, name: w.name }))} categories={categories} batches={batches} initialPreview={initialPreview} initialError={initialError} /></>;
+  return <ImportManager aiAvailable={aiConfigured()} pdfOnlyDocuments={aiUsesChatCompletions()} wallets={wallets.filter(w => !w.archived).map(w => ({ id: w.id, name: w.name }))} categories={categories} batches={batches} initialPreview={initialPreview} initialError={initialError} />;
 }

@@ -7,8 +7,8 @@ import { SegmentedControl } from "@/components/ui/interaction-controls";
 import { importResponse, type ImportBatch, type ImportWallet } from "./import-review";
 import styles from "./statement-import.module.css";
 
-export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = false, onPreview, disabled = false }: {
-  wallets: ImportWallet[]; available: boolean; pdfOnlyDocuments?: boolean; onPreview: (batch: ImportBatch) => void; disabled?: boolean;
+export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = false, onPreview, disabled = false, onBusyChange }: {
+  wallets: ImportWallet[]; available: boolean; pdfOnlyDocuments?: boolean; onPreview: (batch: ImportBatch) => void; disabled?: boolean; onBusyChange?: (busy: boolean) => void;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [walletId, setWallet] = useState(wallets[0]?.id || "");
@@ -26,7 +26,7 @@ export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = fal
   async function upload(event: React.FormEvent) {
     event.preventDefault();
     if (locked || !walletId || !consent || !validSource) return;
-    setBusy(true); setError("");
+    setBusy(true); onBusyChange?.(true); setError("");
     try {
       const form = new FormData();
       if (inputMode === "text") form.append("text", text);
@@ -34,7 +34,7 @@ export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = fal
       form.append("walletId", walletId); form.append("consent", String(consent));
       onPreview(await importResponse(await fetch("/api/v1/imports/ai", { method: "POST", body: form })));
     } catch (e) { setError(e instanceof Error ? e.message : "Không đọc được sao kê."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); onBusyChange?.(false); }
   }
 
   return <section className={`card ${styles.uploadCard}`} aria-labelledby="statement-title">
@@ -46,7 +46,7 @@ export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = fal
       </div></div>
       <span className={styles.limitBadge}>Tối đa 200 giao dịch / lần</span>
     </header>
-    {!available && <p role="status" className={styles.notice}>AI chưa được cấu hình trên máy chủ. Bạn vẫn có thể nhập CSV/XLSX bằng ánh xạ cột bên dưới.</p>}
+    {!available && <p role="status" className={styles.notice}>AI chưa được cấu hình trên máy chủ. Bạn vẫn có thể chọn cách nhập CSV / Excel để tự ghép cột.</p>}
     {!wallets.length && <p>Tạo ví trước tại <a className="text-link" href="/wallets">Ví & tài khoản</a>.</p>}
     <form onSubmit={upload} aria-busy={busy}>
       <fieldset disabled={locked} className={styles.uploadFieldset}>
@@ -73,7 +73,7 @@ export function AiStatementImporter({ wallets, available, pdfOnlyDocuments = fal
           </div>
           <div className={styles.destinationPanel}>
             <div className="field"><label htmlFor="ai-statement-wallet"><Wallet size={16} aria-hidden="true" /> Nhập vào ví</label><select id="ai-statement-wallet" value={walletId} required onChange={e => setWallet(e.target.value)}>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
-            <ol className={styles.steps}><li><span>1</span><div><strong>Thêm sao kê</strong><small>Tải tệp hoặc dán nội dung</small></div></li><li><span>2</span><div><strong>Kiểm tra giao dịch</strong><small>Chỉnh sửa và bỏ dòng không cần</small></div></li><li><span>3</span><div><strong>Xác nhận nhập vào ví</strong><small>Chỉ ghi nhận khi bạn đồng ý</small></div></li></ol>
+            <p className={styles.walletHint}>Chọn ví phát sinh các giao dịch trong sao kê. Bạn có thể sửa danh mục và bỏ dòng không cần ở bước kiểm tra.</p>
           </div>
         </div>
         <div className={styles.uploadFooter}>
