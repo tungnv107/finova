@@ -1,5 +1,6 @@
 "use client";
-import { useRef, useState } from "react";
+import { ActionDialog } from "@/components/ui/action-dialog";
+import { useRef, useState, type ComponentProps } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, WalletCards, Landmark, Smartphone, PiggyBank, Archive, Pencil, History, Trash2 } from "lucide-react";
 import { ActionMenu } from "@/components/ui/interaction-controls";
@@ -14,6 +15,7 @@ const icons = { CASH: WalletCards, BANK: Landmark, EWALLET: Smartphone, SAVINGS:
 
 export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet[]; onboarding?: boolean }) {
   const router = useRouter();
+  const [confirmation, setConfirmation] = useState<Omit<ComponentProps<typeof ActionDialog>, "onClose"> | null>(null);
   const [adding, setAdding] = useState(onboarding);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -76,18 +78,16 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
   }
 
   async function archive(id: string, archived: boolean) {
-    if (!window.confirm(archived ? "Khôi phục ví này?" : "Lưu trữ ví này? Lịch sử giao dịch vẫn được giữ lại.")) return;
     setError(""); setBusy(true);
     try {
       const response = await fetch(`/api/v1/wallets/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ archived: !archived }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error?.message || "Không thể cập nhật ví.");
       router.refresh();
-    } catch (err) { setError(err instanceof Error ? err.message : "Có lỗi kết nối."); }
+    }
     finally { setBusy(false); }
   }
 
   async function removeWallet(wallet: Wallet) {
-    if (!window.confirm(`Xóa vĩnh viễn ví "${wallet.name}"? Số dư đầu kỳ (nếu có) sẽ được xóa khỏi sổ cái. Chỉ ví chưa phát sinh giao dịch hoặc liên kết khác mới có thể xóa. Không thể hoàn tác.`)) return;
     setBusy(true); setError(""); setDeleteMessage("");
     try {
       const response = await fetch(`/api/v1/wallets/${encodeURIComponent(wallet.id)}`, { method: "DELETE" });
@@ -98,7 +98,7 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
       if (detailWalletId === wallet.id) { setDetailWalletId(wallets.find(w => w.id !== wallet.id)?.id ?? ""); invalidateDetail(); }
       setDeleteMessage(`Đã xóa ví "${wallet.name}".`);
       router.refresh();
-    } catch (err) { setError(err instanceof Error ? err.message : "Có lỗi kết nối."); }
+    }
     finally { setBusy(false); }
   }
 
@@ -133,7 +133,10 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
     const w = wallets.find(wallet => wallet.id === reconcileId);
     if (!w || !/^(0|[1-9]\d{0,15})$/.test(actualBalance) || reconcileReason.trim().length < 5) return;
     const delta = BigInt(actualBalance) - BigInt(w.balance);
-    if (!window.confirm(`Xác nhận đối soát ${w.name}: số dư sổ ${formatVnd(w.balance)}, thực tế ${formatVnd(actualBalance)}, chênh lệch ${formatVnd(delta.toString())}? Khoản chênh lệch sẽ được hạch toán vào vốn điều chỉnh, không tính thu/chi.`)) return;
+    setConfirmation({ title: "Xác nhận đối soát", confirmLabel: "Ghi nhận chênh lệch", description: <><p>{w.name}: số dư sổ {formatVnd(w.balance)}, thực tế {formatVnd(actualBalance)}.</p><p><strong>Chênh lệch: {formatVnd(delta.toString())}</strong></p><p>Chênh lệch được hạch toán vào vốn điều chỉnh, không tính thu chi.</p></>, onConfirm: () => reconcile(w) });
+  }
+
+  async function reconcile(w: Wallet) {
     setBusy(true); setError(""); setReconcileMessage("");
     reconciliationKey.current ??= crypto.randomUUID();
     try {
@@ -146,11 +149,12 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
       setReconcileMessage(`Đã ghi nhận chênh lệch ${formatVnd(data.data.delta)} và lưu lý do kiểm kê.`);
       setReconcileId(null); reconciliationKey.current = null;
       router.refresh();
-    } catch (err) { setError(err instanceof Error ? err.message : "Có lỗi kết nối."); }
+    }
     finally { setBusy(false); }
   }
 
   return <>
+    {confirmation && <ActionDialog {...confirmation} onClose={() => setConfirmation(null)} />}
     <div className="page-head"><div><h1 className="page-title">{onboarding ? "Thiết lập ví đầu tiên" : "Ví & tài khoản"}</h1><p className="subtitle">{onboarding ? "Bước 1/1: Tạo ví và nhập số dư hiện có để bắt đầu ghi chép." : "Quản lý số dư từ sổ cái của từng ví. Tiền chỉ ghi nhận khi thực sự phát sinh."}</p></div>{!onboarding && <button className="button button-primary" onClick={() => setAdding(!adding)}><Plus /> Tạo ví mới</button>}</div>
     {!onboarding && <section className="wallet-overview" aria-label="Tổng quan danh sách ví">
       <div className="wallet-overview-intro"><span className="eyebrow">VÍ & TÀI KHOẢN</span><h2>Tiền của bạn, rõ từng ví.</h2><p>Theo dõi số dư thực tế và đối soát với sổ cái. Số dư khả dụng theo kỳ được tính tại trang Tổng quan.</p></div>
@@ -171,8 +175,8 @@ export function WalletManager({ wallets, onboarding = false }: { wallets: Wallet
 <ActionMenu label={`Thao tác ví ${w.name}`} disabled={busy} items={[
   { label: "Xem lịch sử", icon: History, onSelect: () => { setDetailWalletId(w.id); invalidateDetail(); document.getElementById("wallet-history")?.scrollIntoView({ behavior: "smooth" }); } },
   { label: "Sửa ví", icon: Pencil, onSelect: () => { setEditingId(w.id); setEditedName(w.name); setEditedAvailable(w.includeInAvailable); setError(""); } },
-  { label: w.archived ? "Khôi phục ví" : "Lưu trữ ví", icon: Archive, danger: !w.archived, onSelect: () => void archive(w.id, w.archived) },
-  { label: "Xóa ví", icon: Trash2, danger: true, onSelect: () => void removeWallet(w) },
+  { label: w.archived ? "Khôi phục ví" : "Lưu trữ ví", icon: Archive, danger: !w.archived, onSelect: () => setConfirmation({ title: w.archived ? "Khôi phục ví?" : "Lưu trữ ví?", description: <p><strong>{w.name}</strong>. Lịch sử giao dịch được giữ nguyên. Bạn có thể khôi phục ví đã lưu trữ bất cứ lúc nào.</p>, confirmLabel: w.archived ? "Khôi phục ví" : "Lưu trữ ví", onConfirm: () => archive(w.id, w.archived) }) },
+  { label: "Xóa ví", icon: Trash2, danger: true, onSelect: () => setConfirmation({ title: "Xóa vĩnh viễn ví?", description: <><p><strong>{w.name}</strong> · Số dư {formatVnd(w.balance)}</p><p>Số dư đầu kỳ sẽ được xóa khỏi sổ cái. Chỉ ví chưa phát sinh giao dịch hoặc liên kết mới xóa được. Thao tác này không thể hoàn tác.</p></>, confirmLabel: "Xóa ví", danger: true, onConfirm: () => removeWallet(w) }) },
 ]} /></div></div></article>; })}</div>}
     {reconcileMessage && <p role="status" className="subtitle" style={{ marginTop: 14 }}>{reconcileMessage}</p>}
     {reconcileId && (() => { const w = wallets.find(wallet => wallet.id === reconcileId); if (!w) return null;

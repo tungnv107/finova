@@ -1,5 +1,6 @@
 "use client";
 
+import { createIdempotentRequest } from "@/lib/idempotent-request";
 import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
 import { HandCoins, Pencil, Plus } from "lucide-react";
@@ -14,6 +15,7 @@ const empty = (walletId: string, today: string) => ({ direction: "BORROW", count
 
 export function DebtsManager({ debts, wallets, today }: { debts: Debt[]; wallets: Wallet[]; today: string }) {
   const router = useRouter();
+  const [sendIdempotent] = useState(createIdempotentRequest);
   const fieldPrefix = useId();
   const [form, setForm] = useState(empty(wallets[0]?.id ?? "", today));
   const [showCreate, setShowCreate] = useState(false);
@@ -26,7 +28,8 @@ export function DebtsManager({ debts, wallets, today }: { debts: Debt[]; wallets
   const [success, setSuccess] = useState("");
 
   async function send(url: string, method: "POST" | "PATCH", body: object, idempotent = false) {
-    const response = await fetch(url, { method, headers: { "Content-Type": "application/json", ...(idempotent ? { "Idempotency-Key": crypto.randomUUID() } : {}) }, body: JSON.stringify(body) });
+    if (idempotent) return sendIdempotent(url, body, method);
+    const response = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message ?? "Không thể lưu nghiệp vụ.");
     return data.data;

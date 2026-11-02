@@ -1,5 +1,20 @@
 export const TIMEZONE = "Asia/Ho_Chi_Minh";
 
+/** datetime-local fields use the same calendar as reports, irrespective of device timezone. */
+export function localDateTimeInput(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+  const part = (type: string) => parts.find(p => p.type === type)!.value;
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+}
+
+export function vietnamDateTime(value: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error("Ngày không hợp lệ.");
+  vndDayStart(value.slice(0, 10));
+  const date = new Date(`${value}:00+07:00`);
+  if (!Number.isFinite(date.getTime()) || localDateTimeInput(date) !== value) throw new Error("Ngày không hợp lệ.");
+  return date;
+}
+
 export function localDay(date: Date): string {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
   const part = (key: string) => parts.find((p) => p.type === key)!.value;

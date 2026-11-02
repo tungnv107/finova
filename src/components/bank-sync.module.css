@@ -130,7 +130,7 @@
 .emptyCompact { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; min-height: 280px; padding: 30px; border: 1px dashed var(--finova-border-control); border-radius: 14px; background: var(--finova-surface-subtle); text-align: center; }
 .emptyCompact svg { color: var(--finova-primary); }
 .emptyCompact strong { color: var(--finova-text); font-size: 13px; }
-.emptyCompact p { max-width: 260px; margin: 0; color: var(--finova-text-muted); font-size: 11px; line-height: 1.7; }
+.emptyCompact p { max-width: 260px; margin: 0; color: var(--finova-text-secondary); font-size: 11px; line-height: 1.7; }
 .sandbox { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 20px; }
 .sandbox strong { font-size: 12px; }
 .sandbox p { margin: 4px 0 0; color: var(--finova-text-muted); font-size: 11px; }

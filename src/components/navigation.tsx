@@ -87,7 +87,7 @@ export function PageLocation() {
 export function TopbarQuickAction() {
   const [open, setOpen] = useState(false);
   return <>
-    <button type="button" className="button button-primary topbar-quick-action" onClick={() => setOpen(true)} aria-haspopup="dialog"><Plus size={17} aria-hidden="true" /> Thêm giao dịch</button>
+    <button type="button" className="button topbar-quick-action" onClick={() => setOpen(true)} aria-haspopup="dialog"><Plus size={17} aria-hidden="true" /> Ghi nhanh</button>
     <QuickTransactionSheet open={open} onClose={() => setOpen(false)} />
   </>;
 }
@@ -106,7 +106,7 @@ export function MobileBottomNav() {
     <nav aria-label="Điều hướng điện thoại" className="mobile-nav">
       {tabs.slice(0, 2).map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`mobile-link ${path === href ? "active" : ""}`} aria-current={path === href ? "page" : undefined}><Icon aria-hidden="true" /><span>{label}</span></Link>)}
       <div className="mobile-fab-slot"><button type="button" className="mobile-fab" aria-label="Thêm giao dịch" aria-haspopup="dialog" onClick={() => setQuickOpen(true)}><Plus aria-hidden="true" size={28} /></button><span className="mobile-fab-label">Thêm mới</span></div>
-      {tabs.slice(2).map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`mobile-link ${path === href ? "active" : ""}`} aria-current={path === href ? "page" : undefined}><Icon aria-hidden="true" /><span>{label}</span></Link>)}
+      {tabs.slice(2).map(({ href, label, icon: Icon }) => <Link key={href} href={href} className={`mobile-link ${path === href || path.startsWith(`${href}/`) ? "active" : ""}`} aria-current={path === href || path.startsWith(`${href}/`) ? "page" : undefined}><Icon aria-hidden="true" /><span>{label}</span></Link>)}
     </nav>
     <QuickTransactionSheet open={quickOpen} onClose={() => setQuickOpen(false)} />
   </>;

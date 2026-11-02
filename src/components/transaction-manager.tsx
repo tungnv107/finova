@@ -1,4 +1,7 @@
 "use client";
+import { createIdempotentRequest } from "@/lib/idempotent-request";
+import { ActionDialog } from "@/components/ui/action-dialog";
+import { localDateTimeInput, vietnamDateTime } from "@/lib/dates";
 import { CategorySuggestion } from "@/components/category-suggestion";
 import { Fragment, useCallback, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -14,6 +17,8 @@ const labels = { INCOME: "Thu tiền", EXPENSE: "Chi tiền", TRANSFER: "Chuyể
 
 export function TransactionManager({ wallets, categories, rows, nextCursor, selectedTransaction, initialKind, initialWalletId, initialCategoryId, initialCategoryScope = "direct", initialIncludeRefunds = false, initialFeeOnly = false, initialSearch, initialSort = "desc", start, endExclusive }: { wallets: Wallet[]; categories: Category[]; rows: TransactionRow[]; nextCursor: string | null; selectedTransaction?: TransactionRow | null; initialKind?: string; initialWalletId?: string; initialCategoryId?: string; initialCategoryScope?: "direct" | "subtree"; initialIncludeRefunds?: boolean; initialFeeOnly?: boolean; initialSearch?: string; initialSort?: "asc" | "desc"; start: string; endExclusive: string }) {
   const router = useRouter();
+  const [sendIdempotent] = useState(createIdempotentRequest);
+  const [action, setAction] = useState<{ kind: "cancel" | "refund"; row: TransactionRow } | null>(null);
   const activeWallets = wallets.filter(w => !w.archived);
   const [kind, setKind] = useState<"INCOME" | "EXPENSE" | "TRANSFER">("EXPENSE");
   const [walletId, setWalletId] = useState(activeWallets[0]?.id || "");
@@ -23,7 +28,7 @@ export function TransactionManager({ wallets, categories, rows, nextCursor, sele
   const [feeAmount, setFeeAmount] = useState("0");
   const [note, setNote] = useState("");
   const [tags, setTags] = useState("");
-  const [occurredAt, setOccurredAt] = useState(() => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); });
+  const [occurredAt, setOccurredAt] = useState(() => localDateTimeInput(new Date()));
   const [editing, setEditing] = useState<TransactionRow | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -76,12 +81,12 @@ export function TransactionManager({ wallets, categories, rows, nextCursor, sele
     finally { setLoadingMore(false); }
   }
 
-  function reset() { setOpen(false); setEditing(null); setAmount(""); setFeeAmount("0"); setNote(""); setTags(""); setCategoryId(""); setError(""); }
+  function reset() { setOccurredAt(localDateTimeInput(new Date())); setOpen(false); setEditing(null); setAmount(""); setFeeAmount("0"); setNote(""); setTags(""); setCategoryId(""); setError(""); }
   function selectKind(next: "INCOME" | "EXPENSE" | "TRANSFER") { setKind(next); setCategoryId(""); setFeeAmount("0"); }
   function edit(row: TransactionRow) {
     if (row.kind === "REFUND") return;
     setEditing(row); setKind(row.kind as typeof kind); setWalletId(row.walletId); setDestinationWalletId(row.destinationWalletId || ""); setCategoryId(row.categoryId || ""); setAmount(row.amount); setFeeAmount(row.feeAmount ?? "0"); setNote(row.note || ""); setTags((row.tags ?? []).join(", "));
-    const d = new Date(row.occurredAt); setOccurredAt(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)); setOpen(true); setError(""); window.scrollTo({ top: 0, behavior: "smooth" });
+    setOccurredAt(localDateTimeInput(new Date(row.occurredAt))); setOpen(true); setError(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setError("");
@@ -94,28 +99,23 @@ export function TransactionManager({ wallets, categories, rows, nextCursor, sele
     setBusy(true);
     try {
       const url = editing ? `/api/v1/transactions/${editing.id}` : "/api/v1/transactions";
-      const response = await fetch(url, { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ kind, walletId, destinationWalletId: kind === "TRANSFER" ? destinationWalletId : undefined, categoryId: kind === "TRANSFER" ? undefined : categoryId, amount, feeAmount: kind === "TRANSFER" ? (feeAmount || "0") : undefined, note, tags: parsedTags, occurredAt: new Date(occurredAt).toISOString(), ...(editing ? { version: editing.version } : {}) }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error?.message || "Không lưu được giao dịch.");
+      await sendIdempotent(url, { kind, walletId, destinationWalletId: kind === "TRANSFER" ? destinationWalletId : undefined, categoryId: kind === "TRANSFER" ? undefined : categoryId, amount, feeAmount: kind === "TRANSFER" ? (feeAmount || "0") : undefined, note, tags: parsedTags, occurredAt: vietnamDateTime(occurredAt).toISOString(), ...(editing ? { version: editing.version } : {}) }, editing ? "PATCH" : "POST");
       reset(); router.refresh();
     } catch (err) { setError(err instanceof Error ? err.message : "Lỗi kết nối."); }
     finally { setBusy(false); }
   }
-  async function remove(row: TransactionRow) {
-    if (!window.confirm(`Hủy giao dịch ${formatVnd(row.amount)}${row.kind === "TRANSFER" && row.feeAmount && row.feeAmount !== "0" ? ` kèm phí ${formatVnd(row.feeAmount)}` : ""}? Sổ cái sẽ được ghi bút toán đảo.`)) return;
-    try {
+  async function confirmAction(value: string) {
+    if (!action) return;
+    const row = action.row;
+    if (action.kind === "refund") {
+      await sendIdempotent(`/api/v1/transactions/${row.id}/refunds`, { amount: value });
+    } else {
       const response = await fetch(`/api/v1/transactions/${row.id}?version=${row.version}`, { method: "DELETE" });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error?.message || "Không hủy được giao dịch.");
-      router.refresh();
-    } catch (err) { setError(err instanceof Error ? err.message : "Lỗi kết nối."); }
-  }
-  async function refund(row: TransactionRow) {
-    const amount = window.prompt(`Số tiền hoàn cho khoản chi ${formatVnd(row.amount)} (VND):`, row.amount);
-    if (amount === null) return;
-    try {
-      const response = await fetch(`/api/v1/transactions/${row.id}/refunds`, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ amount }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error?.message || "Không hoàn được tiền.");
-      router.refresh();
-    } catch (err) { setError(err instanceof Error ? err.message : "Lỗi kết nối."); }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "Không hủy được giao dịch.");
+      setVisibleRows(items => items.filter(item => item.id !== row.id));
+    }
+    router.refresh();
   }
 
   function applyFilter(e: React.FormEvent) {
@@ -132,9 +132,13 @@ export function TransactionManager({ wallets, categories, rows, nextCursor, sele
   listQuery.set("sort", initialSort);
   const dayOf = (date: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(date));
   return <>
-    <div className="page-head"><div><h1 className="page-title">Giao dịch</h1><p className="subtitle">Thu, chi, chuyển ví và hoàn tiền. Mỗi khoản được hạch toán cân đối.</p></div><button type="button" className="v4-admin-record-link" disabled={!activeWallets.length} onClick={() => { reset(); setOpen(true); }}><Plus size={17} aria-hidden="true" /> Mở biểu mẫu giao dịch</button></div>
+    {action && <ActionDialog key={action.kind + action.row.id} title={action.kind === "refund" ? "Hoàn tiền khoản chi" : "Hủy giao dịch?"}
+      description={<><p><strong>{formatVnd(action.row.amount)}</strong> · {action.row.categoryName || labels[action.row.kind as keyof typeof labels]} · {action.row.walletName}</p><p>{action.kind === "refund" ? "Tiền hoàn được ghi về ví gốc và giảm chi tiêu tương ứng." : "Sổ cái sẽ ghi bút toán đảo, giữ lại lịch sử của giao dịch."}</p>{action.row.kind === "TRANSFER" && action.row.feeAmount !== "0" && <p>Phí chuyển tiền được đảo cùng giao dịch: {formatVnd(action.row.feeAmount)}.</p>}</>}
+      amount={action.kind === "refund" ? { initial: "", label: "Số tiền hoàn (VND)", hint: "Nhập số tiền thực nhận. Tổng hoàn tiền không được vượt khoản chi gốc." } : undefined}
+      danger={action.kind === "cancel"} confirmLabel={action.kind === "refund" ? "Ghi nhận hoàn tiền" : "Hủy giao dịch"} onConfirm={confirmAction} onClose={() => setAction(null)} />}
+    <div className="page-head"><div><h1 className="page-title">Giao dịch</h1><p className="subtitle">Thu, chi, chuyển ví và hoàn tiền. Mỗi khoản được hạch toán cân đối.</p></div><button type="button" className="button button-primary" disabled={busy || !activeWallets.length} onClick={() => { reset(); setOpen(true); }}><Plus size={17} aria-hidden="true" /> Mở biểu mẫu giao dịch</button></div>
     {!activeWallets.length && <div className="card card-pad" style={{ marginBottom: 20 }}>Bạn cần <a className="text-link" href="/wallets">tạo ví đầu tiên</a> trước khi ghi giao dịch.</div>}
-    {open && <form onSubmit={submit} className="card card-pad" style={{ marginBottom: 22 }}><div className="section-header"><h2 className="section-title">{editing ? "Chỉnh sửa giao dịch" : "Ghi giao dịch mới"}</h2><button type="button" className="button button-outline" onClick={reset}>Đóng</button></div><SegmentedControl className="v4-transaction-kind" label="Loại giao dịch" options={[{ value: "EXPENSE", label: "Chi tiền", icon: ArrowUpRight }, { value: "INCOME", label: "Thu tiền", icon: ArrowDownLeft }, { value: "TRANSFER", label: "Chuyển ví", icon: ArrowLeftRight }]} value={kind} disabled={Boolean(editing)} onChange={selectKind} /><div className="form-grid"><div className="field"><label htmlFor="amount">Số tiền (VND)</label><input id="amount" inputMode="numeric" pattern="[1-9][0-9]*" required value={amount} onChange={e => setAmount(e.target.value)} placeholder="250000" /></div><div className="field"><label htmlFor="transaction-wallet">Ví nguồn</label><select id="transaction-wallet" value={walletId} required onChange={e => setWalletId(e.target.value)}>{activeWallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>{kind === "TRANSFER" ? <><div className="field"><label htmlFor="transaction-dest">Ví nhận</label><select id="transaction-dest" value={destinationWalletId} required onChange={e => setDestinationWalletId(e.target.value)}><option value="">Chọn ví nhận</option>{activeWallets.filter(w => w.id !== walletId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div><div className="field"><label htmlFor="transaction-fee">Phí chuyển tiền (VND)</label><input id="transaction-fee" inputMode="numeric" pattern="(0|[1-9][0-9]*)" required value={feeAmount} onChange={e => setFeeAmount(e.target.value)} placeholder="0" /><small>Phí trừ thêm vào ví nguồn và ghi nhận là chi phí.</small></div></> : <div className="field"><label htmlFor="transaction-category">Danh mục</label><select id="transaction-category" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="">Chọn danh mục</option>{categories.filter(c => c.kind === kind).map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select></div>}<div className="field"><label htmlFor="transaction-date">Thời điểm phát sinh</label><input id="transaction-date" type="datetime-local" value={occurredAt} onChange={e => setOccurredAt(e.target.value)} required /></div><div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor="transaction-note">Ghi chú</label><textarea id="transaction-note" value={note} onChange={e => setNote(e.target.value)} maxLength={1000} placeholder="Nội dung giao dịch (không bắt buộc)" /></div>{kind !== "TRANSFER" && <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor="transaction-tags">Thẻ giao dịch</label><input id="transaction-tags" value={tags} onChange={e => setTags(e.target.value)} maxLength={319} placeholder="Ví dụ: ăn trưa, công việc" aria-describedby="transaction-tags-help" /><small id="transaction-tags-help">Phân tách bằng dấu phẩy; tối đa 10 thẻ, mỗi thẻ tối đa 30 ký tự, không trùng nhau.</small></div>}</div><CategorySuggestion note={note} kind={kind} categories={categories} onSelect={setCategoryId} disabled={busy} />{error && <div className="form-error" role="alert">{error}</div>}<div className="form-footer"><button type="submit" disabled={busy} className="button button-primary">{busy ? "Đang ghi sổ…" : editing ? "Lưu thay đổi" : "Ghi giao dịch"}</button></div></form>}
+    {open && <form onSubmit={submit} className="card card-pad" style={{ marginBottom: 22 }}><div className="section-header"><h2 className="section-title">{editing ? "Chỉnh sửa giao dịch" : "Ghi giao dịch mới"}</h2><button type="button" className="button button-outline" onClick={reset}>Đóng</button></div><SegmentedControl className="v4-transaction-kind" label="Loại giao dịch" options={[{ value: "EXPENSE", label: "Chi tiền", icon: ArrowUpRight }, { value: "INCOME", label: "Thu tiền", icon: ArrowDownLeft }, { value: "TRANSFER", label: "Chuyển ví", icon: ArrowLeftRight }]} value={kind} disabled={Boolean(editing)} onChange={selectKind} /><div className="form-grid"><div className="field"><label htmlFor="amount">Số tiền (VND)</label><input id="amount" inputMode="numeric" pattern="[1-9][0-9]*" required value={amount} onChange={e => setAmount(e.target.value)} placeholder="250000" /></div><div className="field"><label htmlFor="transaction-wallet">{kind === "INCOME" ? "Ví nhận tiền" : "Ví nguồn"}</label><select id="transaction-wallet" value={walletId} required onChange={e => { const next = e.target.value; setWalletId(next); if (destinationWalletId === next) setDestinationWalletId(activeWallets.find(w => w.id !== next)?.id ?? ""); }}>{activeWallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>{kind === "TRANSFER" ? <><div className="field"><label htmlFor="transaction-dest">Ví nhận</label><select id="transaction-dest" value={destinationWalletId} required onChange={e => setDestinationWalletId(e.target.value)}><option value="">Chọn ví nhận</option>{activeWallets.filter(w => w.id !== walletId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div><div className="field"><label htmlFor="transaction-fee">Phí chuyển tiền (VND)</label><input id="transaction-fee" inputMode="numeric" pattern="(0|[1-9][0-9]*)" required value={feeAmount} onChange={e => setFeeAmount(e.target.value)} placeholder="0" /><small>Phí trừ thêm vào ví nguồn và ghi nhận là chi phí.</small></div></> : <div className="field"><label htmlFor="transaction-category">Danh mục</label><select id="transaction-category" value={categoryId} onChange={e => setCategoryId(e.target.value)} required><option value="">Chọn danh mục</option>{categories.filter(c => c.kind === kind).map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select></div>}<div className="field"><label htmlFor="transaction-date">Thời điểm phát sinh (giờ Việt Nam)</label><input id="transaction-date" type="datetime-local" value={occurredAt} onChange={e => setOccurredAt(e.target.value)} required /></div><div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor="transaction-note">Ghi chú</label><textarea id="transaction-note" value={note} onChange={e => setNote(e.target.value)} maxLength={1000} placeholder="Nội dung giao dịch (không bắt buộc)" /></div>{kind !== "TRANSFER" && <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor="transaction-tags">Thẻ giao dịch</label><input id="transaction-tags" value={tags} onChange={e => setTags(e.target.value)} maxLength={319} placeholder="Ví dụ: ăn trưa, công việc" aria-describedby="transaction-tags-help" /><small id="transaction-tags-help">Phân tách bằng dấu phẩy; tối đa 10 thẻ, mỗi thẻ tối đa 30 ký tự, không trùng nhau.</small></div>}</div><CategorySuggestion note={note} kind={kind} categories={categories} onSelect={setCategoryId} disabled={busy} />{error && <div className="form-error" role="alert">{error}</div>}<div className="form-footer"><button type="submit" disabled={busy} className="button button-primary">{busy ? "Đang ghi sổ…" : editing ? "Lưu thay đổi" : "Ghi giao dịch"}</button></div></form>}
     {!open && error && <div role="alert" className="form-error">{error}</div>}
     {selectedTransaction && <section className="card card-pad" aria-label="Chi tiết giao dịch được chọn" style={{ marginBottom: 22, border: "2px solid #1E5EFF" }}>
       <div className="section-header"><div><h2 className="section-title">Giao dịch được chọn</h2><p className="section-subtitle">Có thể nằm ngoài bộ lọc hoặc trang danh sách hiện tại.</p></div><a className="text-link" href={`/transactions?${listQuery.toString()}`}>Đóng chi tiết →</a></div>
@@ -143,7 +147,7 @@ export function TransactionManager({ wallets, categories, rows, nextCursor, sele
     {selectedTransaction.kind === "TRANSFER" && selectedTransaction.feeAmount && selectedTransaction.feeAmount !== "0" && <p>Phí chuyển tiền: <strong>{formatVnd(selectedTransaction.feeAmount)}</strong> (trừ tại ví nguồn)</p>}
     {selectedTransaction.note && <p>{selectedTransaction.note}</p>}
     {Boolean(selectedTransaction.tags?.length) && <p aria-label="Thẻ giao dịch">Thẻ: {selectedTransaction.tags.map(tag => <span key={tag} className="badge" style={{ marginRight: 6 }}>{tag}</span>)}</p>}
-      <div className="finance-actions"><button className="button button-outline" onClick={() => edit(selectedTransaction)} disabled={selectedTransaction.kind === "REFUND"}>Sửa giao dịch</button>{selectedTransaction.kind === "EXPENSE" && <button className="button button-outline" onClick={() => refund(selectedTransaction)}>Hoàn tiền</button>}</div>
+      <div className="finance-actions"><button className="button button-outline" onClick={() => edit(selectedTransaction)} disabled={selectedTransaction.kind === "REFUND"}>Sửa giao dịch</button>{selectedTransaction.kind === "EXPENSE" && <button className="button button-outline" onClick={() => setAction({ kind: "refund", row: selectedTransaction })}>Hoàn tiền</button>}</div>
     </section>}
     <div className="filter-toolbar transaction-filter-toolbar v4-filter-toolbar"><div className="v4-filter-summary"><span className="section-subtitle">{visibleRows.length} giao dịch trong kỳ</span>
       {initialKind && <span className="v4-filter-chip">{labels[initialKind as keyof typeof labels] ?? initialKind}</span>}{initialWalletId && <span className="v4-filter-chip">{wallets.find(w => w.id === initialWalletId)?.name ?? "Ví đã chọn"}</span>}{initialCategoryId && <span className="v4-filter-chip">{categories.find(c => c.id === initialCategoryId)?.name ?? "Danh mục đã chọn"}</span>}{initialSearch && <span className="v4-filter-chip">“{initialSearch}”</span>}
@@ -179,16 +183,16 @@ export function TransactionManager({ wallets, categories, rows, nextCursor, sele
               {Boolean(row.tags?.length) && <div className="transaction-tags">{row.tags.map(tag => <span className="badge" key={tag}>{tag}</span>)}</div>}
             </div><div className="transaction-item-end"><strong className={incoming ? "amount-income" : row.kind === "TRANSFER" ? "amount-transfer" : "amount-expense"}>{incoming ? "+" : row.kind === "TRANSFER" ? "↔ " : "−"}{formatVnd(row.amount)}</strong><ActionMenu label={`Thao tác với ${row.categoryName || labels[row.kind as keyof typeof labels]}`} items={[
   { label: "Sửa giao dịch", icon: Pencil, disabled: row.kind === "REFUND", onSelect: () => edit(row) },
-  ...(row.kind === "EXPENSE" ? [{ label: "Hoàn tiền", icon: RotateCcw, onSelect: () => void refund(row) }] : []),
-  { label: "Hủy giao dịch", icon: Trash2, danger: true, onSelect: () => void remove(row) },
+  ...(row.kind === "EXPENSE" ? [{ label: "Hoàn tiền", icon: RotateCcw, onSelect: () => void setAction({ kind: "refund", row }) }] : []),
+  { label: "Hủy giao dịch", icon: Trash2, danger: true, onSelect: () => void setAction({ kind: "cancel", row }) },
 ]} /></div>
           </article>
         </Fragment>;
       })}</div>
       <div className="table-wrap transaction-desktop-table"><table><thead><tr><th>GIAO DỊCH</th><th>NGÀY</th><th>VÍ</th><th>SỐ TIỀN</th><th>THAO TÁC</th></tr></thead><tbody>{visibleRows.map((row, index) => <Fragment key={row.id}>{(index === 0 || dayOf(row.occurredAt) !== dayOf(visibleRows[index - 1].occurredAt)) && <tr className="transaction-date-row"><th colSpan={5} scope="rowgroup">Ngày {new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(row.occurredAt))}</th></tr>}<tr><td><strong>{row.categoryName || labels[row.kind as keyof typeof labels]}</strong><div className="section-subtitle">{row.note || labels[row.kind as keyof typeof labels]}</div>{Boolean(row.tags?.length) && <div aria-label="Thẻ giao dịch">{row.tags.map(tag => <span className="badge" key={tag}>{tag}</span>)}</div>}{row.kind === "TRANSFER" && row.feeAmount !== "0" && <div>Phí chuyển: {formatVnd(row.feeAmount)} (ví nguồn)</div>}</td><td>{new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(row.occurredAt))}</td><td>{row.walletName}{row.destinationWalletName ? ` → ${row.destinationWalletName}` : ""}</td><td className={row.kind === "INCOME" || row.kind === "REFUND" ? "amount-income" : row.kind === "EXPENSE" ? "amount-expense" : "amount-transfer"}>{row.kind === "INCOME" || row.kind === "REFUND" ? "+" : row.kind === "EXPENSE" ? "−" : "↔ "}{formatVnd(row.amount)}</td><td><ActionMenu label={`Thao tác với ${row.categoryName || labels[row.kind as keyof typeof labels]}`} items={[
   { label: "Sửa giao dịch", icon: Pencil, disabled: row.kind === "REFUND", onSelect: () => edit(row) },
-  ...(row.kind === "EXPENSE" ? [{ label: "Hoàn tiền", icon: RotateCcw, onSelect: () => void refund(row) }] : []),
-  { label: "Hủy giao dịch", icon: Trash2, danger: true, onSelect: () => void remove(row) },
+  ...(row.kind === "EXPENSE" ? [{ label: "Hoàn tiền", icon: RotateCcw, onSelect: () => void setAction({ kind: "refund", row }) }] : []),
+  { label: "Hủy giao dịch", icon: Trash2, danger: true, onSelect: () => void setAction({ kind: "cancel", row }) },
 ]} /></td></tr></Fragment>)}</tbody></table></div>
     </>}{moreError && <p className="form-error" role="alert">{moreError}</p>}{cursor && <div className="form-footer"><button type="button" className="button button-outline" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "Đang tải…" : "Xem thêm giao dịch"}</button></div>}</section>
   </>;

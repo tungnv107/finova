@@ -1,4 +1,5 @@
 "use client";
+import { createIdempotentRequest } from "@/lib/idempotent-request";
 import { CategorySuggestion } from "@/components/category-suggestion";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -22,6 +23,9 @@ export function QuickTransactionSheet({ open, onClose, initialKind = "EXPENSE" }
 
 function QuickTransactionDialog({ onClose, initialKind }: { onClose: () => void; initialKind: Kind }) {
   const router = useRouter();
+  const [send] = useState(createIdempotentRequest);
+  const [occurredAt] = useState(() => new Date().toISOString());
+  const saving = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -47,10 +51,11 @@ function QuickTransactionDialog({ onClose, initialKind }: { onClose: () => void;
     document.body.style.overflow = "hidden";
     closeRef.current?.focus();
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
+      if (event.key === "Escape") { event.preventDefault(); if (!saving.current) onCloseRef.current(); return; }
       if (event.key !== "Tab") return;
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
-      if (!focusable?.length) return;
+      const nodes = dialogRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+      const focusable = Array.from(nodes ?? []).filter(node => node.tabIndex >= 0 && node.getClientRects().length > 0);
+      if (!focusable.length) { event.preventDefault(); dialogRef.current?.focus(); return; }
       const first = focusable[0], last = focusable[focusable.length - 1];
       if (!dialogRef.current?.contains(document.activeElement)) { event.preventDefault(); first.focus(); }
       else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
@@ -70,31 +75,31 @@ function QuickTransactionDialog({ onClose, initialKind }: { onClose: () => void;
   }, [loadAttempt]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(""); setBusy(true);
+    event.preventDefault();
+    if (saving.current) return;
+    saving.current = true; setError(""); setBusy(true);
     try {
       if (kind === "TRANSFER" && (!destinationWalletId || destinationWalletId === walletId)) throw new Error("Hãy chọn một ví nhận khác ví nguồn.");
       if (kind !== "TRANSFER" && !categories.some(c => c.id === categoryId && c.kind === kind)) throw new Error("Hãy chọn danh mục phù hợp với giao dịch.");
-      const body = { kind, walletId, destinationWalletId: kind === "TRANSFER" ? destinationWalletId : undefined, categoryId: kind !== "TRANSFER" ? categoryId : undefined, amount, feeAmount: kind === "TRANSFER" ? feeAmount : undefined, note, tags: [], occurredAt: new Date().toISOString() };
-      const response = await fetch("/api/v1/transactions", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(body) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error?.message || "Không ghi được giao dịch.");
+      const body = { kind, walletId, destinationWalletId: kind === "TRANSFER" ? destinationWalletId : undefined, categoryId: kind !== "TRANSFER" ? categoryId : undefined, amount, feeAmount: kind === "TRANSFER" ? feeAmount : undefined, note, tags: [], occurredAt };
+      await send("/api/v1/transactions", body);
       setAmount(""); setNote(""); setCategoryId(""); setFeeAmount("0"); onClose(); router.refresh();
     } catch (err) { setError(err instanceof Error ? err.message : "Không ghi được giao dịch."); }
-    finally { setBusy(false); }
+    finally { saving.current = false; setBusy(false); }
   }
-  return <div className="sheet-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="quick-title" className="quick-sheet">
+  return <div className="sheet-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !saving.current) onClose(); }}>
+    <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="quick-title" className="quick-sheet">
       <div className="sheet-handle" aria-hidden="true" />
-      <div className="section-header"><div><span className="eyebrow">GHI CHÉP NHANH</span><h2 id="quick-title" className="section-title">Thêm giao dịch</h2></div><button ref={closeRef} type="button" onClick={onClose} className="icon-button" aria-label="Đóng biểu mẫu"><X size={20} /></button></div>
-      <SegmentedControl className="v4-quick-kind" label="Loại giao dịch" value={kind} options={actions.map(action => ({ value: action.kind, label: action.title, icon: action.icon }))}
+      <div className="section-header"><div><span className="eyebrow">GHI CHÉP NHANH</span><h2 id="quick-title" className="section-title">Thêm giao dịch</h2></div><button ref={closeRef} type="button" disabled={busy} onClick={onClose} className="icon-button" aria-label="Đóng biểu mẫu"><X size={20} /></button></div>
+      <SegmentedControl className="v4-quick-kind" label="Loại giao dịch" disabled={busy} value={kind} options={actions.map(action => ({ value: action.kind, label: action.title, icon: action.icon }))}
         onChange={next => { setKind(next); setCategoryId(""); setError(""); }} />
-      {loading ? <p className="subtitle" role="status">Đang tải ví và danh mục…</p> : loadError ? <div role="alert" className="quick-load-error"><p>Không tải được ví và danh mục. Vui lòng kiểm tra kết nối rồi thử lại.</p><button type="button" className="button button-outline" onClick={() => { setLoading(true); setLoadError(false); setLoadAttempt(value => value + 1); }}>Tải lại dữ liệu</button></div> : !wallets.length ? <p className="subtitle">Bạn cần tạo ví trước khi ghi giao dịch. <a className="text-link" href="/wallets">Quản lý ví →</a></p> : <form onSubmit={submit} className="quick-form">
+      {loading ? <p className="subtitle" role="status">Đang tải ví và danh mục…</p> : loadError ? <div role="alert" className="quick-load-error"><p>Không tải được ví và danh mục. Vui lòng kiểm tra kết nối rồi thử lại.</p><button type="button" className="button button-outline" onClick={() => { setLoading(true); setLoadError(false); setLoadAttempt(value => value + 1); }}>Tải lại dữ liệu</button></div> : !wallets.length ? <p className="subtitle">Bạn cần tạo ví trước khi ghi giao dịch. <a className="text-link" href="/wallets">Quản lý ví →</a></p> : <form onSubmit={submit} className="quick-form" aria-busy={busy}><fieldset className="form-fields" disabled={busy}>
         <div className="field"><label htmlFor="quick-amount">Số tiền (VND)</label><input id="quick-amount" required inputMode="numeric" pattern="[1-9][0-9]*" placeholder="Nhập số tiền" value={amount} onChange={e => setAmount(e.target.value)} /></div>
-        <div className="field"><label htmlFor="quick-wallet">Ví nguồn</label><select id="quick-wallet" required value={walletId} onChange={e => { const next = e.target.value; setWalletId(next); if (destinationWalletId === next) setDestinationWalletId(wallets.find(w => w.id !== next)?.id ?? ""); }}>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        <div className="field"><label htmlFor="quick-wallet">{kind === "INCOME" ? "Ví nhận tiền" : "Ví nguồn"}</label><select id="quick-wallet" required value={walletId} onChange={e => { const next = e.target.value; setWalletId(next); if (destinationWalletId === next) setDestinationWalletId(wallets.find(w => w.id !== next)?.id ?? ""); }}>{wallets.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
         {kind === "TRANSFER" ? <><div className="field"><label htmlFor="quick-dest">Ví nhận</label><select id="quick-dest" required value={destinationWalletId} onChange={e => setDestinationWalletId(e.target.value)}><option value="">Chọn ví nhận</option>{wallets.filter(w => w.id !== walletId).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div><div className="field"><label htmlFor="quick-fee">Phí chuyển tiền (VND)</label><input id="quick-fee" required inputMode="numeric" pattern="(0|[1-9][0-9]*)" value={feeAmount} onChange={e => setFeeAmount(e.target.value)} /></div></> : <div className="field"><label htmlFor="quick-category">Danh mục</label><select id="quick-category" required value={categoryId} onChange={e => setCategoryId(e.target.value)}><option value="">Chọn danh mục</option>{categories.filter(c => c.kind === kind).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>}
         <div className="field"><label htmlFor="quick-note">Ghi chú (không bắt buộc)</label><textarea id="quick-note" maxLength={1000} placeholder="Thêm mô tả cho giao dịch" value={note} onChange={e => setNote(e.target.value)} /></div>
         <CategorySuggestion note={note} kind={kind} categories={categories} onSelect={setCategoryId} disabled={busy} />{error && <p role="alert" className="form-error">{error}</p>}
-        <button className="button button-primary quick-submit" disabled={busy || (kind === "TRANSFER" && wallets.length < 2)} type="submit">{busy ? "Đang ghi sổ…" : "Lưu giao dịch"}</button>
+        </fieldset><button className="button button-primary quick-submit" disabled={busy || (kind === "TRANSFER" && wallets.length < 2)} type="submit">{busy ? "Đang ghi sổ…" : "Lưu giao dịch"}</button>
       </form>}
     </div>
   </div>;

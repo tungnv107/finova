@@ -1,16 +1,128 @@
 // Fail CI for any runtime advisory or a new development advisory.
-// The sole temporary exception is a dev-only, unpatched braces advisory.
+// The temporary exception is the dev-only ESLint chain still requiring old minimatch.
+// See docs/SYSTEM_AUDIT_2026-10-31.md for runtime remediation and compatibility evidence.
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const ADVISORY = "GHSA-vfj7-8cjw-p6xm";
+const ADVISORY = "GHSA-g3hv-75wg-m249";
 const RECHECK_BY = "2026-12-01";
 const expectedChain = new Map([
-  ["braces", ADVISORY],
-  ["micromatch", "braces"],
-  ["fast-glob", "micromatch"],
-  ["@next/eslint-plugin-next", "fast-glob"],
-  ["eslint-config-next", "@next/eslint-plugin-next"],
+  [
+    "@eslint-community/eslint-utils",
+    [
+      "eslint"
+    ]
+  ],
+  [
+    "@eslint/config-array",
+    [
+      "minimatch"
+    ]
+  ],
+  [
+    "@eslint/eslintrc",
+    [
+      "minimatch"
+    ]
+  ],
+  [
+    "@next/eslint-plugin-next",
+    [
+      "@eslint-community/eslint-utils"
+    ]
+  ],
+  [
+    "@typescript-eslint/eslint-plugin",
+    [
+      "@typescript-eslint/parser",
+      "@typescript-eslint/type-utils",
+      "@typescript-eslint/utils",
+      "eslint"
+    ]
+  ],
+  [
+    "@typescript-eslint/parser",
+    [
+      "@typescript-eslint/typescript-estree",
+      "eslint"
+    ]
+  ],
+  [
+    "@typescript-eslint/type-utils",
+    [
+      "@typescript-eslint/typescript-estree",
+      "@typescript-eslint/utils",
+      "eslint"
+    ]
+  ],
+  [
+    "@typescript-eslint/typescript-estree",
+    [
+      "minimatch"
+    ]
+  ],
+  [
+    "@typescript-eslint/utils",
+    [
+      "@eslint-community/eslint-utils",
+      "@typescript-eslint/typescript-estree",
+      "eslint"
+    ]
+  ],
+  [
+    "eslint",
+    [
+      "@eslint-community/eslint-utils",
+      "@eslint/config-array",
+      "@eslint/eslintrc",
+      "minimatch"
+    ]
+  ],
+  [
+    "eslint-config-next",
+    [
+      "@next/eslint-plugin-next",
+      "eslint",
+      "eslint-plugin-import",
+      "eslint-plugin-jsx-a11y",
+      "eslint-plugin-react",
+      "typescript-eslint"
+    ]
+  ],
+  [
+    "eslint-plugin-import",
+    [
+      "minimatch"
+    ]
+  ],
+  [
+    "eslint-plugin-jsx-a11y",
+    [
+      "minimatch"
+    ]
+  ],
+  [
+    "eslint-plugin-react",
+    [
+      "minimatch"
+    ]
+  ],
+  [
+    "minimatch",
+    [
+      "GHSA-g3hv-75wg-m249"
+    ]
+  ],
+  [
+    "typescript-eslint",
+    [
+      "@typescript-eslint/eslint-plugin",
+      "@typescript-eslint/parser",
+      "@typescript-eslint/typescript-estree",
+      "@typescript-eslint/utils",
+      "eslint"
+    ]
+  ]
 ]);
 
 function audit(flags = "") {
@@ -56,13 +168,17 @@ function check() {
   const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
   for (const [name, finding] of findings) {
     const expected = expectedChain.get(name);
-    if (!expected || finding.severity !== "high" || finding.via.length !== 1) {
+    if (!expected || finding.severity !== "moderate" || finding.via.length !== expected.length) {
       throw new Error(`New/unexpected audit advisory for ${name} (${finding.severity}).`);
     }
-    const actual = finding.via[0];
-    if (typeof actual === "string" ? actual !== expected : actual.name !== "braces" || !actual.url?.endsWith(`/${ADVISORY}`)) {
-      throw new Error(`Audit advisory chain changed for ${name}.`);
-    }
+    const actual = finding.via.map(item => {
+      if (typeof item === "string") return item;
+      if (item.name !== "minimatch" || item.severity !== "moderate" || !item.url?.endsWith(`/${ADVISORY}`)) {
+        throw new Error(`New advisory for ${name}.`);
+      }
+      return ADVISORY;
+    }).sort();
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`Audit advisory chain changed for ${name}.`);
     if (!finding.nodes?.length || finding.nodes.some((node) => lock.packages?.[node]?.dev !== true)) {
       throw new Error(`Audit finding ${name} is not exclusively dev-only.`);
     }

@@ -8,6 +8,7 @@ const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOO
 export { googleConfigured };
 
 export const auth = betterAuth({
+  baseURL: configuredAppOrigin() ?? undefined,
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   emailAndPassword: { enabled: false },
   socialProviders: googleConfigured ? {

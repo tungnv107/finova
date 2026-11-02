@@ -43,7 +43,8 @@ async function getEquity(db: DB, workspaceId: string) {
 export async function createWallet(context: UserContext, raw: z.infer<typeof walletInput>) {
   const input = walletInput.parse(raw);
   if (input.type === "SAVINGS" && input.name.length > 80) throw new HttpError(400, "INVALID", "Tên ví quá dài.");
-  return prisma.$transaction(async (db) => {
+  // First-wallet setup can race across tabs when both create the shared equity account.
+  return serializable(async (db) => {
     const ledger = await db.ledgerAccount.create({ data: { workspaceId: context.workspaceId, code: `WALLET_${crypto.randomUUID()}`, name: input.name, kind: "ASSET" } });
     const wallet = await db.wallet.create({ data: {
       workspaceId: context.workspaceId, ledgerAccountId: ledger.id, name: input.name,

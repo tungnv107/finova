@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 import path from "node:path";
 
-// Start as Report-Only until authenticated Google and mobile browser acceptance.
+// Always enforce the non-script protections. The full script policy remains
+// opt-in until Google OAuth and provider flows have production acceptance.
+const baselineCsp = "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://accounts.google.com";
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
@@ -21,7 +23,9 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   // Keep generated Prisma code on the Node side; it is outside node_modules.
-  serverExternalPackages: ["@finova/prisma", "@prisma/client", "prisma"],
+  // ExcelJS is server-only. Keep its optional cloud archive adapters out of
+  // webpack's eager dependency resolution; local XLSX read/write uses Node.
+  serverExternalPackages: ["@finova/prisma", "@prisma/client", "prisma", "exceljs"],
   // Restrict production file tracing to this application on Windows.
   outputFileTracingRoot: path.resolve(process.cwd()),
   webpack(webpackConfig, { dev, isServer }) {
@@ -54,7 +58,8 @@ const nextConfig: NextConfig = {
         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
         { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
         { key: "X-DNS-Prefetch-Control", value: "off" },
-        { key: process.env.FINOVA_CSP_ENFORCE === "1" ? "Content-Security-Policy" : "Content-Security-Policy-Report-Only", value: csp },
+        { key: "Content-Security-Policy", value: process.env.FINOVA_CSP_ENFORCE === "1" ? csp : baselineCsp },
+        ...(process.env.FINOVA_CSP_ENFORCE === "1" ? [] : [{ key: "Content-Security-Policy-Report-Only", value: csp }]),
       ],
     }];
   },

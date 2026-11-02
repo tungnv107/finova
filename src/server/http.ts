@@ -23,11 +23,19 @@ export function failure(error: unknown) {
     return privateJson({ error: { code: "CONCURRENT_CONFLICT", message: "Có thay đổi đồng thời. Vui lòng tải lại và thử lại." } }, 409);
   }
   if (error instanceof ZodError) return privateJson({ error: { code: "VALIDATION_ERROR", message: "Dữ liệu không hợp lệ.", details: error.issues } }, 400);
-  if (error instanceof Error && /Ngày không hợp lệ|Khoảng thời gian|Số tiền VND|Số tiền phải/.test(error.message)) {
+  if (error instanceof Error && [
+    "Ngày không hợp lệ (YYYY-MM-DD).", "Ngày không hợp lệ.",
+    "Khoảng thời gian phải tăng dần và không quá 366 ngày.",
+    "Số tiền VND phải là số nguyên không âm dưới 10¹⁶.", "Số tiền phải lớn hơn 0.",
+  ].includes(error.message)) {
     return privateJson({ error: { code: "VALIDATION_ERROR", message: error.message } }, 400);
   }
-  console.error("Unhandled API error", error instanceof Error ? error.message : "unknown");
-  return privateJson({ error: { code: "SERVER_ERROR", message: "Có lỗi hệ thống. Vui lòng thử lại." } }, 500);
+  // Prisma/provider messages may contain SQL arguments, financial notes or tokens.
+  // Log only a correlation ID and a bounded classification, never the raw error.
+  const requestId = crypto.randomUUID();
+  const category = error instanceof Prisma.PrismaClientKnownRequestError ? "database" : "unexpected";
+  console.error("Unhandled API error", { requestId, category });
+  return privateJson({ error: { code: "SERVER_ERROR", message: "Có lỗi hệ thống. Vui lòng thử lại.", requestId } }, 500);
 }
 
 export function assertSameOrigin(request: NextRequest) {

@@ -32,7 +32,8 @@ export async function loadTransactionExport(workspaceId: string, filter: ReportF
     return [row.id, row.occurredAt.toISOString(), row.kind, row.wallet.name,
       row.destinationWallet?.name ?? "", row.category?.name ?? "", amount,
       row.kind === "INCOME" ? amount : "0",
-      row.kind === "EXPENSE" ? amount : row.kind === "REFUND" ? `-${amount}` : "0", row.note ?? ""];
+      row.kind === "EXPENSE" ? amount : row.kind === "REFUND" ? `-${amount}`
+        : row.kind === "TRANSFER" && (!filter.walletId || filter.walletId === row.walletId) ? money(row.feeAmount?.toString() ?? "0") : "0", row.note ?? ""];
   });
   return { period, records };
 }

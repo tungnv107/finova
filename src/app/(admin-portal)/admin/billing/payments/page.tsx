@@ -34,7 +34,7 @@ export default async function AdminPaymentsPage({ searchParams }: {
       <span className="section-subtitle">{result.total} giao dịch {reviewOnly ? "cần kiểm tra" : "đã ghi nhận"}</span>
     </div>
     <section className="card card-pad" style={{ marginTop: 20 }}>
-      <div className="table-wrap"><table><thead><tr>
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="Danh sách thanh toán"><table><thead><tr>
         <th>Thời điểm</th><th>Provider</th><th>Mã giao dịch (ẩn)</th><th>Tiền nhận</th>
         <th>Mã đơn</th><th>Đối soát</th><th>Xác thực</th><th>Worker</th>
       </tr></thead><tbody>

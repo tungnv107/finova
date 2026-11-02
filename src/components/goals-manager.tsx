@@ -1,8 +1,9 @@
 "use client";
+import { createIdempotentRequest } from "@/lib/idempotent-request";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Target, AlertTriangle, Pencil, Archive, RotateCcw } from "lucide-react";
-import { ActionMenu } from "@/components/ui/interaction-controls";
+import { ActionMenu, SegmentedControl } from "@/components/ui/interaction-controls";
 import { formatVnd } from "@/lib/money";
 import type { listGoals } from "@/server/goals";
 
@@ -11,6 +12,8 @@ type Wallet = { id: string; name: string; balance: string };
 
 export function GoalsManager({ goals, wallets }: { goals: Goal[]; wallets: Wallet[] }) {
   const router = useRouter();
+  const [sendIdempotent] = useState(createIdempotentRequest);
+  const [allocation, setAllocation] = useState<{ id: string; kind: "ALLOCATE" | "RELEASE" } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", walletId: wallets[0]?.id ?? "", target: "", dueDate: "" });
@@ -47,7 +50,8 @@ export function GoalsManager({ goals, wallets }: { goals: Goal[]; wallets: Walle
   async function allocate(g: Goal, kind: "ALLOCATE" | "RELEASE") {
     setBusy(true); setError(""); setSuccess("");
     try {
-      await request(`/api/v1/goals/${g.id}/allocations`, "POST", { kind, amount: amounts[g.id] ?? "" }, crypto.randomUUID());
+      await sendIdempotent(`/api/v1/goals/${g.id}/allocations`, { kind, amount: amounts[g.id] ?? "" });
+      setAllocation(null);
       setAmounts(v => ({ ...v, [g.id]: "" }));
       setSuccess(kind === "ALLOCATE" ? "Đã dành tiền trong ví cho mục tiêu." : "Đã rút số tiền phân bổ.");
       router.refresh();
@@ -81,12 +85,16 @@ export function GoalsManager({ goals, wallets }: { goals: Goal[]; wallets: Walle
         <div className="module-progress" role="progressbar" aria-label={`Tiến độ ${g.name}`} aria-valuenow={Math.max(0, Math.min(100, Number(g.progress)))} aria-valuemin={0} aria-valuemax={100}><div className="module-progress-fill" style={{ width: `${Math.max(0, Math.min(100, Number(g.progress)))}%` }} /></div>
         <p className="subtitle" style={{ marginTop: 8 }}>{g.progress}% hoàn thành{g.daysLeft !== null && g.daysLeft > 0 && g.monthlyNeeded ? ` · Ước tính cần ${formatVnd(g.monthlyNeeded)} mỗi 30 ngày` : ""}</p>
         {g.walletUnderfunded && <p role="alert" className="module-alert module-danger-text"><AlertTriangle size={16} /> Ví đang có ít tiền hơn mức phân bổ. Kiểm tra lại sau khi chi tiêu hoặc chuyển tiền.</p>}
-        {!g.archived && <div style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: 10, marginTop: 16 }}><div className="field" style={{ flex: "1 1 180px" }}><label htmlFor={`goal-amount-${g.id}`}>Số tiền (₫)</label><input id={`goal-amount-${g.id}`} inputMode="numeric" pattern="[1-9][0-9]*" value={amounts[g.id] ?? ""} onChange={e => setAmounts(v => ({ ...v, [g.id]: e.target.value }))} /></div><button type="button" className="button button-primary" disabled={busy || !amounts[g.id]} onClick={() => allocate(g, "ALLOCATE")}>Dành tiền</button><button type="button" className="v4-secondary-text-button" disabled={busy || !amounts[g.id]} onClick={() => allocate(g, "RELEASE")}>Rút phân bổ</button></div>}
-        <div className="finance-actions" style={{ marginTop: 17 }}><ActionMenu label={`Thao tác mục tiêu ${g.name}`} disabled={busy} items={[
+        <div className="record-actions">{!g.archived && <button type="button" className="v4-admin-record-link" disabled={busy} aria-expanded={allocation?.id === g.id} aria-controls={allocation?.id === g.id ? `allocation-${g.id}` : undefined} onClick={() => setAllocation(current => current?.id === g.id ? null : { id: g.id, kind: "ALLOCATE" })}>Điều chỉnh tiền dành</button>}<ActionMenu label={`Thao tác mục tiêu ${g.name}`} disabled={busy} items={[
           { label: "Sửa mục tiêu", icon: Pencil, onSelect: () => begin(g) },
           { label: g.archived ? "Khôi phục" : "Lưu trữ", icon: g.archived ? RotateCcw : Archive, danger: !g.archived, onSelect: () => archive(g) },
         ]} /></div>
-        {!!g.events.length && <details style={{ marginTop: 15 }}><summary style={{ cursor: "pointer", color: "#1E5EFF" }}>Lịch sử phân bổ ({g.events.length} gần nhất)</summary><div className="table-wrap"><table><thead><tr><th>Ngày giờ</th><th>Nghiệp vụ</th><th>Số tiền</th></tr></thead><tbody>{g.events.map(e => <tr key={e.id}><td>{new Date(e.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</td><td>{e.kind === "ALLOCATE" ? "Dành tiền" : "Rút phân bổ"}</td><td>{formatVnd(e.amount)}</td></tr>)}</tbody></table></div></details>}
+        {!g.archived && allocation?.id === g.id && <form id={`allocation-${g.id}`} className="allocation-form" onSubmit={event => { event.preventDefault(); void allocate(g, allocation.kind); }}>
+          <SegmentedControl label={`Phân bổ cho ${g.name}`} disabled={busy} value={allocation.kind} onChange={kind => setAllocation({ id: g.id, kind })} options={[{ value: "ALLOCATE", label: "Dành tiền" }, { value: "RELEASE", label: "Rút phân bổ" }]} />
+          <div className="field"><label htmlFor={`goal-amount-${g.id}`}>Số tiền (₫)</label><input id={`goal-amount-${g.id}`} required disabled={busy} inputMode="numeric" pattern="[1-9][0-9]{0,15}" value={amounts[g.id] ?? ""} onChange={e => setAmounts(v => ({ ...v, [g.id]: e.target.value }))} /></div>
+          <div className="form-footer"><button type="button" className="v4-secondary-text-button" disabled={busy} onClick={() => setAllocation(null)}>Đóng</button><button type="submit" className="button button-primary" disabled={busy}>{busy ? "Đang lưu…" : allocation.kind === "ALLOCATE" ? "Dành tiền" : "Rút phân bổ"}</button></div>
+        </form>}
+        {!!g.events.length && <details style={{ marginTop: 15 }}><summary className="text-link">Lịch sử phân bổ ({g.events.length} gần nhất)</summary><div className="table-wrap"><table><thead><tr><th>Ngày giờ</th><th>Nghiệp vụ</th><th>Số tiền</th></tr></thead><tbody>{g.events.map(e => <tr key={e.id}><td>{new Date(e.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}</td><td>{e.kind === "ALLOCATE" ? "Dành tiền" : "Rút phân bổ"}</td><td>{formatVnd(e.amount)}</td></tr>)}</tbody></table></div></details>}
       </article>)}
     </div>
   </>;

@@ -4,7 +4,7 @@
   --finova-surface-subtle: #eaf2ff;
   --finova-border: #dbe5f3;
   --finova-text-secondary: #344766;
-  --finova-text-muted: #5e708c;
+  --finova-text-muted: #526580;
   --finova-shadow-card: 0 2px 6px rgb(11 31 74 / 3%), 0 12px 28px rgb(11 31 74 / 6%);
 }
 :root:not([data-theme="dark"]) .main {

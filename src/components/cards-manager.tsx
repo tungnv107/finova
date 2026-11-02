@@ -1,5 +1,6 @@
 "use client";
 
+import { createIdempotentRequest } from "@/lib/idempotent-request";
 import { useRouter } from "next/navigation";
 import { useId, useState, type FormEvent } from "react";
 import { CreditCard, Pencil, Plus } from "lucide-react";
@@ -14,6 +15,7 @@ const blankCard = () => ({ name: "", lastFour: "", creditLimit: "", openingDebt:
 
 export function CardsManager({ cards, wallets, categories, today }: { cards: Card[]; wallets: Wallet[]; categories: Category[]; today: string }) {
   const router = useRouter();
+  const [sendIdempotent] = useState(createIdempotentRequest);
   const fieldPrefix = useId();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState(blankCard());
@@ -26,7 +28,8 @@ export function CardsManager({ cards, wallets, categories, today }: { cards: Car
   const [success, setSuccess] = useState("");
 
   async function send(url: string, method: "POST" | "PATCH", body: object, withKey = false) {
-    const response = await fetch(url, { method, headers: { "Content-Type": "application/json", ...(withKey ? { "Idempotency-Key": crypto.randomUUID() } : {}) }, body: JSON.stringify(body) });
+    if (withKey) return sendIdempotent(url, body, method);
+    const response = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error?.message ?? "Không thể lưu nghiệp vụ thẻ.");
     return payload.data;

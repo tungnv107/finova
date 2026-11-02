@@ -27,8 +27,8 @@ describe("goal progress and projections", () => {
     expect(html).toContain("6.000.000 ₫");
     expect(html).toContain("Ước tính cần 1.125.000 ₫ mỗi 30 ngày");
     expect(html).toContain("Lịch sử phân bổ (1 gần nhất)");
-    expect(html).toContain("Dành tiền");
-    expect(html).toContain("Rút phân bổ");
+    expect(html).toContain("Điều chỉnh tiền dành");
+    expect(html).not.toContain('id="goal-amount-goal-a"');
     expect(html).toContain("Lưu trữ");
   });
 
