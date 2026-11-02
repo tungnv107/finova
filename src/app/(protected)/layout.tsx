@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db";
 import { systemAdminEnabled } from "@/server/system-auth";
 import { UsagePageview } from "@/components/usage-pageview";
 import { usageAnalyticsEnabled } from "@/modules/admin/usage";
+import { UserAvatar } from "@/components/user-avatar";
 
 export const dynamic = "force-dynamic";
 
@@ -29,9 +30,9 @@ export default async function ProtectedLayout({ children }: { children: React.Re
       <nav aria-label="Điều hướng chính"><NavLinks utilitiesEnabled={utilitiesEnabled} /></nav>
       <div className="sidebar-spacer" />
       {adminAccess && <Link href="/admin" className="nav-item">Quản trị Finova</Link>}
-      <div className="sidebar-bottom"><SettingsLink /><SignOut /><div className="sidebar-account"><div className="avatar">{context.name.charAt(0).toUpperCase()}</div><div className="sidebar-account-name"><strong>{context.name}</strong><small>Tài khoản cá nhân</small></div></div></div>
+      <div className="sidebar-bottom"><SettingsLink /><SignOut /><div className="sidebar-account"><div className="avatar"><UserAvatar name={context.name} image={context.image} /></div><div className="sidebar-account-name"><strong>{context.name}</strong><small>Tài khoản cá nhân</small></div></div></div>
     </aside>
-    <div className="main"><header className="topbar"><div className="topbar-brand"><span className="mobile-brand"><span className="app-brand-plaque"><BrandLogo width={143} /></span></span><PageLocation /></div><div className="topbar-right"><div className="privacy-label"><ShieldCheck size={16} /> Dữ liệu riêng tư</div><TopbarQuickAction /><ThemeSelector compact />{utilitiesEnabled && <Link className="topbar-notification icon-button" href="/notifications" aria-label="Thông báo"><Bell size={19} /></Link>}<Link href="/settings" className="avatar" aria-label="Tài khoản cá nhân">{context.name.charAt(0).toUpperCase()}</Link></div></header><main className="content">{children}</main></div>
+    <div className="main"><header className="topbar"><div className="topbar-brand"><span className="mobile-brand"><span className="app-brand-plaque"><BrandLogo width={143} /></span></span><PageLocation /></div><div className="topbar-right"><div className="privacy-label"><ShieldCheck size={16} /> Dữ liệu riêng tư</div><TopbarQuickAction /><ThemeSelector compact />{utilitiesEnabled && <Link className="topbar-notification icon-button" href="/notifications" aria-label="Thông báo"><Bell size={19} /></Link>}<Link href="/settings" className="avatar" aria-label="Tài khoản cá nhân"><UserAvatar name={context.name} image={context.image} /></Link></div></header><main className="content">{children}</main></div>
     <MobileBottomNav />
   </div>;
 }

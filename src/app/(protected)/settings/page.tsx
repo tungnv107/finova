@@ -4,6 +4,7 @@ import { requirePageContext } from "@/server/page-context";
 import { prisma } from "@/lib/db";
 import { ThemeSelector } from "@/components/theme-selector";
 import { hasPremiumFeature } from "@/server/premium";
+import { UserAvatar } from "@/components/user-avatar";
 
 const features = [
   { href: "/insights", title: "Phân tích thông minh", detail: "Xu hướng và ngân sách AI", icon: ChartNoAxesCombined },
@@ -22,12 +23,12 @@ const features = [
 
 export default async function SettingsPage() {
   const ctx = await requirePageContext();
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: { name: true, email: true, emailVerified: true, preferences: true } });
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: ctx.userId }, select: { name: true, email: true, image: true, emailVerified: true, preferences: true } });
   const utilitiesEnabled = await hasPremiumFeature(ctx.userId, "STATEMENT_IMPORT");
   return <>
     <div className="page-head"><div><h1 className="page-title">Cá nhân</h1><p className="subtitle">Quản lý tài khoản và khám phá tiện ích Finova.</p></div></div>
     <section className="profile-hero" aria-label="Thông tin tài khoản">
-      <div className="profile-avatar" aria-hidden="true">{(user.name || user.email).charAt(0).toUpperCase()}</div>
+      <div className="profile-avatar" aria-hidden="true"><UserAvatar name={user.name || user.email} image={user.image} /></div>
       <div><span className="hero-label">TÀI KHOẢN CỦA BẠN</span><h2>{user.name || "Người dùng Finova"}</h2><p>{user.email}</p><span className="profile-verified"><ShieldCheck size={15} /> {user.emailVerified ? "Email đã xác minh" : "Email chưa xác minh"}</span></div>
     </section>
     <section className="card card-pad settings-appearance" aria-labelledby="appearance-title"><div><h2 id="appearance-title" className="section-title">Giao diện</h2><p className="section-subtitle">Chọn chế độ hiển thị phù hợp với bạn.</p></div><ThemeSelector /></section>
